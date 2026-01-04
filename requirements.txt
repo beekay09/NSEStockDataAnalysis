@@ -1,0 +1,8 @@
+pandas
+yfinance
+numpy
+streamlit
+plotly
+matplotlib
+nbformat
+ipykernel
