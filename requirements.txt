@@ -4,3 +4,5 @@ numpy
 nbformat
 matplotlib
 ipykernel
+streamlit
+plotly
