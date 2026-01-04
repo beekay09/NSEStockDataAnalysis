@@ -2,3 +2,5 @@ pandas
 yfinance
 numpy
 nbformat
+matplotlib
+ipykernel
