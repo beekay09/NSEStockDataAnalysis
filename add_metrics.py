@@ -80,7 +80,7 @@ def main():
     # DMAs and EMAs
     for window in [3, 20, 100, 200]:
         df[f'{window}DMA'] = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(window, min_periods=1).mean())
-        df[f'{window}EMA'] = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=window, adjust=False, min_periods=1).mean())
+        #df[f'{window}EMA'] = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=window, adjust=False, min_periods=1).mean())
         
     # VWMAs (Requires multi-column, so we use apply + explicit alignment)
     for window in [3, 20, 100, 200]:
@@ -94,9 +94,9 @@ def main():
 
     # 4. Calculate Angles for all metrics
     metrics_cols = [f'{w}DMA' for w in [3, 20, 100, 200]] + \
-                   [f'{w}EMA' for w in [3, 20, 100, 200]] + \
-                   [f'{w}VWMA' for w in [3, 20, 100, 200]] + \
                    ['RSI_14']
+                  # [f'{w}EMA' for w in [3, 20, 100, 200]] + \
+                  # [f'{w}VWMA' for w in [3, 20, 100, 200]] + \
     
     for col in metrics_cols:
         angle_col = f'{col}_LINE_ANGLE' if 'RSI' not in col else f'{col}_angle'
