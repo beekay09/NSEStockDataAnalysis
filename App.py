@@ -87,6 +87,10 @@ def load_data():
         
         # Calculate Daily Returns for Beta
         df['Daily_Return'] = df.groupby('Ticker')['Close'].pct_change()
+
+        # Calculate Previous Day's 20DMA and 200DMA for Crossover Logic
+        df['Prev_20DMA'] = df.groupby('Ticker')['20DMA'].shift(1)
+        df['Prev_200DMA'] = df.groupby('Ticker')['200DMA'].shift(1)
         
         # Ensure we have the necessary angle columns if they aren't explicitly loaded (though csv should have them)
         # Based on add_metrics.py: 200DMA_LINE_ANGLE, RSI_14_angle
@@ -260,6 +264,10 @@ def main():
 
     with st.sidebar.expander("Tab 5: 3DMA Angle"):
         t5_top_n = st.number_input("Top N Stocks", value=10, min_value=5, max_value=50, key="t5_top_n")
+        
+    with st.sidebar.expander("Tab 6 & 7: Crossovers"):
+        crossover_angle = st.number_input("200 DMA Slope >", value=5, key="crossover_angle")
+        proximity_pct = st.slider("Potential Proximity %", 0.1, 5.0, 2.0, 0.1, key="proximity_pct")
 
 
     # --- Filter Logic ---
@@ -315,14 +323,43 @@ def main():
     divergence_tickers = latest_df.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(t5_top_n)['Ticker'].tolist()
     df_5 = get_display_data(divergence_tickers)
 
+    # 6. Actual Bullish Crossovers (20DMA crosses above 200DMA)
+    # latest > 200 AND prev <= 200
+    actual_crossover_tickers = latest_df[
+        (latest_df['20DMA'] > latest_df['200DMA']) &
+        (latest_df['Prev_20DMA'] <= latest_df['Prev_200DMA']) &
+        (latest_df['200DMA_LINE_ANGLE'] > crossover_angle)
+    ]['Ticker'].tolist()
+    df_6 = get_display_data(actual_crossover_tickers)
+
+    # 7. Potential Bullish Crossovers
+    # 20DMA < 200DMA (Below)
+    # Distance < Threshold %
+    # 20DMA Rising (Current > Prev)
+    # 200DMA Positive Slope
+    
+    # Avoid division by zero
+    mask_potential = (
+        (latest_df['20DMA'] < latest_df['200DMA']) &
+        (latest_df['200DMA'] != 0) &
+        ((abs(latest_df['20DMA'] - latest_df['200DMA']) / latest_df['200DMA']) * 100 < proximity_pct) &
+        (latest_df['20DMA'] > latest_df['Prev_20DMA']) &
+        (latest_df['200DMA_LINE_ANGLE'] > crossover_angle)
+    )
+    potential_crossover_tickers = latest_df[mask_potential]['Ticker'].tolist()
+    df_7 = get_display_data(potential_crossover_tickers)
+
+
     # --- Display ---
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "Low RSI & +Slope", 
-        "Low Beta & +Slope", 
-        "Narrow Price Range", 
-        "Divergence Candidates (>Slope)",
-        "Top 10 High 3DMA Angle"
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "Low RSI", 
+        "Low Beta", 
+        "Narrow Band", 
+        "Divergence Slope",
+        "High 3DMA Angle",
+        "Actual Crossover",
+        "Potential Crossover"
     ])
 
     def render_tab_content(data_df, description, key_prefix):
@@ -384,6 +421,12 @@ def main():
         
     with tab5:
         render_tab_content(df_5, f"Top {t5_top_n} Stocks by Highest 3DMA Angle (Unfiltered Slope)", "tab5")
+
+    with tab6:
+        render_tab_content(df_6, f"Actual Bullish Crossover (20DMA crosses 200DMA) + Slope > {crossover_angle}°", "tab6")
+
+    with tab7:
+        render_tab_content(df_7, f"Potential Bullish Crossover (Gap < {proximity_pct}%) + Slope > {crossover_angle}°", "tab7")
 
 if __name__ == "__main__":
     main()
