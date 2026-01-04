@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+nse_stock_data.csv
+nse_stock_data_with_metrics.csv

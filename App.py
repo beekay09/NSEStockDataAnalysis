@@ -3,6 +3,10 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
+import os
+import time
+import subprocess
+import sys
 
 # Page configuration
 st.set_page_config(
@@ -13,6 +17,7 @@ st.set_page_config(
 
 # Constants
 DATA_FILE = "nse_stock_data_with_metrics.csv"
+FRESHNESS_HOURS = 20
 
 # Custom CSS for Dark Background and Styling
 st.markdown("""
@@ -41,6 +46,34 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+def check_and_update_data():
+    """Checks if data is fresh, otherwise runs the update script."""
+    should_update = False
+    msg = ""
+
+    if not os.path.exists(DATA_FILE):
+        should_update = True
+        msg = "Data file not found. Initializing data fetch..."
+    else:
+        mod_time = os.path.getmtime(DATA_FILE)
+        age_hours = (time.time() - mod_time) / 3600
+        if age_hours > FRESHNESS_HOURS:
+            should_update = True
+            msg = f"Data is {age_hours:.1f} hours old (Limit: {FRESHNESS_HOURS}h). Updating..."
+    
+    if should_update:
+        with st.spinner(msg):
+            try:
+                # Run add_metrics.py using the same python environment
+                subprocess.run([sys.executable, "add_metrics.py"], check=True)
+                st.success("Data updated successfully!")
+                # Clear cache to force reload of new data
+                load_data.clear()
+            except subprocess.CalledProcessError as e:
+                st.error(f"Failed to update data: {e}")
+            except Exception as e:
+                st.error(f"An error occurred during update: {e}")
 
 @st.cache_data
 def load_data():
@@ -182,6 +215,9 @@ def plot_charts(df, ticker):
 
 def main():
     st.title("📊 NSE Stock Analysis Dashboard")
+    
+    # Check for data freshness before loading
+    check_and_update_data()
     
     with st.spinner("Loading data..."):
         df = load_data()
