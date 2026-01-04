@@ -122,14 +122,13 @@ def calculate_beta_metrics(df):
             
     return beta_map
 
-def plot_charts(df, ticker):
+def plot_charts(df, ticker, days=180):
     """Render interactive Plotly charts for a specific ticker."""
     stock_df = df[df['Ticker'] == ticker].copy()
     stock_df = stock_df.sort_values('Date')
     
-    # Filter for the last 6 months (approx 126 trading days) for better visibility
-    # or let user decide? We'll default to last 180 days
-    stock_df = stock_df.tail(180)
+    # Filter for the selected timeframe
+    stock_df = stock_df.tail(days)
 
     fig = make_subplots(
         rows=3, cols=1, 
@@ -236,6 +235,11 @@ def main():
     latest_df['Beta'] = latest_df['Ticker'].map(beta_map)
     
     # --- Sidebar Controls ---
+    st.sidebar.header("Chart Settings")
+    timeframe_options = {"3 Months": 90, "6 Months": 180, "1 Year": 365, "2 Years": 730, "Max": 5000}
+    selected_timeframe = st.sidebar.selectbox("Timeframe", list(timeframe_options.keys()), index=1)
+    timeframe_days = timeframe_options[selected_timeframe]
+
     st.sidebar.header("Filter Settings")
     
     with st.sidebar.expander("Tab 1: Low RSI", expanded=True):
@@ -251,9 +255,8 @@ def main():
         t3_days = st.slider("Lookback Days", 5, 30, 10, key="t3_days")
         t3_angle = st.number_input("200 DMA Angle >", value=5, key="t3_angle")
 
-    with st.sidebar.expander("Tab 4: Strong Trend"):
-        t4_rsi = st.slider("RSI Threshold <", 0, 100, 30, key="t4_rsi")
-        t4_angle = st.number_input("200 DMA Angle >", value=20, key="t4_angle")
+    with st.sidebar.expander("Tab 4: Divergence Candidates (Slope filter)"):
+        t4_angle = st.number_input("200 DMA Slope >", value=5, key="t4_angle")
 
     with st.sidebar.expander("Tab 5: 3DMA Angle"):
         t5_top_n = st.number_input("Top N Stocks", value=10, min_value=5, max_value=50, key="t5_top_n")
@@ -302,14 +305,13 @@ def main():
             narrow_band_tickers.append(ticker)
     df_3 = get_display_data(narrow_band_tickers)
 
-    # 4. Strong Trend (RSI < 30 + 200DMA Slope > 20)
-    rsi_less_30_slope_20_tickers = latest_df[
-        (latest_df['RSI_14'] < t4_rsi) & 
-        (latest_df['200DMA_LINE_ANGLE'] > t4_angle)
-    ]['Ticker'].tolist()
-    df_4 = get_display_data(rsi_less_30_slope_20_tickers)
+    # 4. Divergence Candidates with Slope Filter (200DMA Slope > 5)
+    # Filter by Slope -> Sort by 3DMA Angle -> Top 10
+    slope_filtered = latest_df[latest_df['200DMA_LINE_ANGLE'] > t4_angle]
+    divergence_slope_tickers = slope_filtered.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(10)['Ticker'].tolist()
+    df_4 = get_display_data(divergence_slope_tickers)
     
-    # 5. Top 10 by 3DMA Angle
+    # 5. Top 10 by 3DMA Angle (Unfiltered by Slope)
     divergence_tickers = latest_df.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(t5_top_n)['Ticker'].tolist()
     df_5 = get_display_data(divergence_tickers)
 
@@ -319,7 +321,7 @@ def main():
         "Low RSI & +Slope", 
         "Low Beta & +Slope", 
         "Narrow Price Range", 
-        "Strong Trend",
+        "Divergence Candidates (>Slope)",
         "Top 10 High 3DMA Angle"
     ])
 
@@ -364,24 +366,24 @@ def main():
             col4.metric("3 DMA Angle", f"{row['3DMA Angle']:.2f}°")
             col5.metric("Beta", f"{row['Beta']:.2f}")
             
-            plot_charts(df, selected_ticker)
+            plot_charts(df, selected_ticker, timeframe_days)
         else:
             st.info("👆 Click a row in the table above to view the chart.")
 
     with tab1:
-        render_tab_content(df_1, "RSI < 30 and 200 DMA Slope > 5°", "tab1")
+        render_tab_content(df_1, f"RSI < {t1_rsi} and 200 DMA Slope > {t1_angle}°", "tab1")
 
     with tab2:
-        render_tab_content(df_2, "Low Beta (Bottom 25%) and 200 DMA Slope > 5°", "tab2")
+        render_tab_content(df_2, f"Low Beta (Bottom {int(t2_beta_pct*100)}%) and 200 DMA Slope > {t2_angle}°", "tab2")
 
     with tab3:
-        render_tab_content(df_3, "Narrow Price Band (5% range/2 weeks) and 200 DMA Slope > 5°", "tab3")
+        render_tab_content(df_3, f"Narrow Price Band ({int(t3_band_pct*100)}% range/{t3_days} days) and 200 DMA Slope > {t3_angle}°", "tab3")
         
     with tab4:
-        render_tab_content(df_4, "RSI < 30 and 200 DMA Slope > 20°", "tab4")
+        render_tab_content(df_4, f"Top 10 High 3DMA Angle (Divergence) with 200 DMA Slope > {t4_angle}°", "tab4")
         
     with tab5:
-        render_tab_content(df_5, "Top 10 Stocks by Highest 3DMA Angle (For Divergence Check)", "tab5")
+        render_tab_content(df_5, f"Top {t5_top_n} Stocks by Highest 3DMA Angle (Unfiltered Slope)", "tab5")
 
 if __name__ == "__main__":
     main()
