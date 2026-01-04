@@ -5,13 +5,46 @@ import os
 
 def fetch_stock_data(output_file="nse_stock_data.csv"):
     # Read stocks from file
+    # Read stocks from file
     stocks_file = "stocks.txt"
     if os.path.exists(stocks_file):
         with open(stocks_file, "r") as f:
             stocks = [line.strip() for line in f if line.strip()]
+        print(f"Loaded {len(stocks)} stocks from {stocks_file}")
     else:
-        print(f"Error: {stocks_file} not found.")
-        return
+        print(f"{stocks_file} not found. Using static list of major NSE stocks.")
+        stocks = [
+            "HINDCOPPER", "TATACAP", "ENRIN", "POWERINDIA", "ABB", "ACC", "ADANIENSOL", "ADANIENT",
+            "ADANIGREEN", "ADANIPORTS", "ADANIPOWER", "ALKEM", "AMBUJACEM", "APLAPOLLO", "APOLLOHOSP",
+            "APOLLOTYRE", "ASHOKLEY", "ASIANPAINT", "AUBANK", "AUROPHARMA", "AXISBANK", "BAJAJ-AUTO",
+            "BAJAJFINSV", "BAJAJHLDNG", "BAJFINANCE", "BALKRISIND", "BANDHANBNK", "BANKBARODA", "BANKINDIA",
+            "BDL", "BEL", "BHARATFORG", "BHARTIARTL", "BHARTIHEXA", "BHEL", "BIOCON", "BLUESTARCO",
+            "BOSCHLTD", "BPCL", "BRITANNIA", "BSE", "CANBK", "CGPOWER", "CHOLAFIN", "CIPLA",
+            "COALINDIA", "COFORGE", "COLPAL", "CONCOR", "CUMMINSIND", "DABUR", "DEEPAKNTR", "DELHIVERY",
+            "DIVISLAB", "DIXON", "DLF", "DRREDDY", "EICHERMOT", "ELGIEQUIP", "EMAMILTD", "ESCORTS",
+            "ETERNAL", "EXIDEIND", "FCL", "FEDERALBNK", "FIRSTCRY", "GAIL", "GILLETTE", "GLAXO",
+            "GMRAIRPORT", "GODREJCP", "GODREJPROP", "GRANULES", "GRASIM", "HAL", "HAVELLS", "HCLTECH",
+            "HDFCAMC", "HDFCBANK", "HEG", "HEROMOTOCO", "HINDALCO", "HINDPETRO", "HINDUNILVR", "HINDZINC",
+            "HUDCO", "SAMMAANCAP", "ICICIBANK", "ICICIGI", "IDBI", "IDEA", "IDFCFIRSTB", "IGL",
+            "INDHOTEL", "INDIANB", "INDIGO", "INDUSINDBK", "INDUSTOWER", "INFY", "IOB", "IOC",
+            "IRB", "IREDA", "ITC", "JBCHEPHARM", "JINDALSTEL", "JKTYRE", "JSWENERGY", "JSWINFRA",
+            "JSWSTEEL", "JUBLFOOD", "KALYANKJIL", "KANSAINER", "KEI", "KIRLOSBROS", "KOTAKBANK",
+            "KPITTECH", "LTF", "LICHSGFIN", "LICI", "LT", "LTTS", "LUPIN", "M&M", "M&MFIN",
+            "MARICO", "MARUTI", "MAXHEALTH", "MAZDOCK", "MCX", "METROPOLIS", "MFSL", "MIDHANI",
+            "MOTHERSON", "MPHASIS", "MRF", "MRPL", "MUTHOOTFIN", "NATIONALUM", "NAUKRI", "NHPC",
+            "NLCINDIA", "NMDC", "NTPC", "NYKAA", "OBEROIRLTY", "OFSS", "OIL", "ONGC", "PAGEIND",
+            "PATANJALI", "POLICYBZR", "PERSISTENT", "PETRONET", "PFC", "PHOENIXLTD", "PIDILITIND",
+            "PIIND", "PNB", "POLYCAB", "POWERGRID", "PREMIER", "PRESTIGE", "PVRINOX", "RAYMOND",
+            "RBLBANK", "RECLTD", "RELIANCE", "RITES", "ROUTE", "RVNL", "SAIL", "SBICARD",
+            "SBIN", "SCHAEFFLER", "SHREECEM", "SHRIRAMFIN", "SIEMENS", "SJVN", "SOLARINDS",
+            "SONACOMS", "SONATSOFTW", "SRF", "STARHEALTH", "SUNDARMFIN", "SUNPHARMA", "SUPREMEIND",
+            "SUZLON", "SYNGENE", "TATACHEM", "TATACOMM", "TATACONSUM", "TATAELXSI", "TATAINVEST",
+            "TMCV", "TMPV", "TATASTEEL", "TATATECH", "TCS", "TECHM", "TIINDIA", "TITAN",
+            "TORNTPHARM", "TORNTPOWER", "TRENT", "TVSMOTOR", "ULTRACEMCO", "UNIONBANK", "UPL",
+            "VAIBHAVGBL", "VBL", "VEDL", "VGUARD", "VOLTAS", "WHIRLPOOL", "WIPRO", "YESBANK",
+            "ZYDUSLIFE"
+        ]
+
 
     # Remove duplicates if any
     stocks = list(set(stocks))

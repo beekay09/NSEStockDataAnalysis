@@ -31,6 +31,13 @@ def calculate_angle(series, window=1):
 
 
 def main():
+    # 0. Output Freshness Check
+    if os.path.exists(OUTPUT_FILE):
+        output_mod_time = os.path.getmtime(OUTPUT_FILE)
+        if (time.time() - output_mod_time) / 3600 < FRESHNESS_HOURS:
+            print(f"Output file {OUTPUT_FILE} is fresh. Skipping update.")
+            return
+
     # 1. Freshness Check
     should_fetch = False
     if not os.path.exists(REQUIRED_FILE):
