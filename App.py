@@ -134,6 +134,10 @@ def load_data():
         # Calculate Previous Day's 20DMA and 200DMA for Crossover Logic
         df['Prev_20DMA'] = df.groupby('Ticker')['20DMA'].shift(1)
         df['Prev_200DMA'] = df.groupby('Ticker')['200DMA'].shift(1)
+        # Calculate Previous Day's DMA Angles for Bottoming Logic (3, 20, 200)
+        for dma in [3, 20, 200]:
+            if f'{dma}DMA_LINE_ANGLE' in df.columns:
+                df[f'Prev_{dma}DMA_LINE_ANGLE'] = df.groupby('Ticker')[f'{dma}DMA_LINE_ANGLE'].shift(1)
 
         # Calculate 20-Day Volume SMA for Volume Shockers
         df['Volume_20SMA'] = df.groupby('Ticker')['Volume'].transform(lambda x: x.rolling(window=20).mean())
@@ -439,43 +443,108 @@ def main():
     show_bollinger = st.sidebar.checkbox("Show Bollinger Bands", value=True)
     show_volume_profile = st.sidebar.checkbox("Show Volume Profile", value=False)
 
+    # --- Top Navigation ---
+    tab_options = [
+        "Low RSI", 
+        "Low Beta", 
+        "Narrow Band", 
+        "Divergence Slope",
+        "High DMA Angle",
+        "Actual Crossover",
+        "Potential Crossover",
+        "Volume Shockers",
+        "DMA Bottoming"
+    ]
+    
+    # Custom CSS to make radio buttons look like tabs/pills
+    st.markdown("""
+    <style>
+        div.row-widget.stRadio > div {
+            flex-direction: row;
+            justify-content: center;
+            background-color: #262730;
+            padding: 10px;
+            border-radius: 10px;
+            overflow-x: auto;
+        }
+        div.row-widget.stRadio > div[role="radiogroup"] > label {
+            background-color: #0e1117;
+            padding: 5px 15px;
+            border-radius: 15px;
+            margin: 0 5px;
+            border: 1px solid #464b5d;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    selected_tab = st.radio("Select Analysis Mode", tab_options, horizontal=True, label_visibility="collapsed")
+    st.markdown("---")
+
+
     st.sidebar.header("Filter Settings")
     
-    with st.sidebar.expander("Tab 1: Low RSI", expanded=True):
-        t1_rsi = st.slider("RSI Threshold", 0, 100, 30, key="t1_rsi")
-        t1_angle = st.number_input("200 DMA Angle >", value=5, key="t1_angle")
+    # Initialize variables with defaults (to avoid NameError)
+    t1_rsi, t1_angle = 30, 5
+    t2_beta_pct, t2_angle = 0.25, 5
+    t3_band_pct, t3_days, t3_angle = 0.05, 10, 5
+    t4_angle = 5
+    t5_top_n, t5_angle = 10, 5
+    crossover_angle, proximity_pct = 5, 2.0
+    vol_shock_threshold, min_volume, t8_angle = 2.0, 10000, 5
+    t9_min_angle, t9_max_angle, t9_prev_max = -2.0, 10.0, 0.0
 
-    with st.sidebar.expander("Tab 2: Low Beta"):
-        t2_beta_pct = st.slider("Beta Percentile (Bottom %)", 0.05, 0.5, 0.25, 0.05, key="t2_beta")
-        t2_angle = st.number_input("200 DMA Angle >", value=5, key="t2_angle") # Independent angle control
-
-    with st.sidebar.expander("Tab 3: Narrow Band"):
-        t3_band_pct = st.slider("Price Band %", 0.01, 0.20, 0.05, 0.01, key="t3_band")
-        t3_days = st.slider("Lookback Days", 5, 30, 10, key="t3_days")
-        t3_angle = st.number_input("200 DMA Angle >", value=5, key="t3_angle")
-
-    with st.sidebar.expander("Tab 4: Divergence Candidates (Slope filter)"):
-        t4_angle = st.number_input("200 DMA Slope >", value=5, key="t4_angle")
-
-    with st.sidebar.expander("Tab 5: 3DMA Angle"):
-        t5_top_n = st.number_input("Top N Stocks", value=10, min_value=5, max_value=50, key="t5_top_n")
-        t5_angle = st.number_input("200 DMA Slope >", value=5, key="t5_angle")
+    # Conditional Sidebar Controls
+    if selected_tab == "Low RSI":
+        st.sidebar.subheader("Low RSI Settings")
+        t1_rsi = st.sidebar.slider("RSI Threshold", 0, 100, 30, key="t1_rsi")
+        t1_angle = st.sidebar.number_input("200 DMA Angle >", value=5, key="t1_angle")
         
-    with st.sidebar.expander("Tab 6 & 7: Crossovers"):
-        crossover_angle = st.number_input("200 DMA Slope >", value=5, key="crossover_angle")
-        proximity_pct = st.slider("Potential Proximity %", 0.1, 5.0, 2.0, 0.1, key="proximity_pct")
-        
-    with st.sidebar.expander("Tab 8: Volume Shockers"):
-        vol_shock_threshold = st.slider("Volume Ratio (> x times avg)", 1.0, 10.0, 2.0, 0.1, key="vol_shock_threshold")
-        min_volume = st.number_input("Min Average Volume", value=10000, step=10000, key="min_volume")
-        t8_angle = st.number_input("200 DMA Slope >", value=5, key="t8_angle")
+    elif selected_tab == "Low Beta":
+        st.sidebar.subheader("Low Beta Settings")
+        t2_beta_pct = st.sidebar.slider("Beta Percentile (Bottom %)", 0.05, 0.5, 0.25, 0.05, key="t2_beta")
+        t2_angle = st.sidebar.number_input("200 DMA Angle >", value=5, key="t2_angle") 
 
-    # --- Filter Logic ---
+    elif selected_tab == "Narrow Band":
+        st.sidebar.subheader("Narrow Band Settings")
+        t3_band_pct = st.sidebar.slider("Price Band %", 0.01, 0.20, 0.05, 0.01, key="t3_band")
+        t3_days = st.sidebar.slider("Lookback Days", 5, 30, 10, key="t3_days")
+        t3_angle = st.sidebar.number_input("200 DMA Angle >", value=5, key="t3_angle")
+
+    elif selected_tab == "Divergence Slope":
+        st.sidebar.subheader("Divergence Slope Settings")
+        t4_angle = st.sidebar.number_input("200 DMA Slope >", value=5, key="t4_angle")
+
+    elif selected_tab == "High DMA Angle":
+        st.sidebar.subheader("DMA Angle Settings")
+        selected_dma = st.sidebar.selectbox("Select DMA", [3, 20, 200], index=0)
+        t5_top_n = st.sidebar.number_input("Top N Stocks", value=10, min_value=5, max_value=50, key="t5_top_n")
+        t5_angle = st.sidebar.number_input("200 DMA Slope >", value=5, key="t5_angle")
+        
+    elif selected_tab == "Actual Crossover" or selected_tab == "Potential Crossover":
+        st.sidebar.subheader("Crossover Settings")
+        crossover_angle = st.sidebar.number_input("200 DMA Slope >", value=5, key="crossover_angle")
+        if selected_tab == "Potential Crossover":
+            proximity_pct = st.sidebar.slider("Potential Proximity %", 0.1, 5.0, 2.0, 0.1, key="proximity_pct")
+            
+    elif selected_tab == "Volume Shockers":
+        st.sidebar.subheader("Volume Shockers Settings")
+        vol_shock_threshold = st.sidebar.slider("Volume Ratio (> x times avg)", 1.0, 10.0, 2.0, 0.1, key="vol_shock_threshold")
+        min_volume = st.sidebar.number_input("Min Average Volume", value=10000, step=10000, key="min_volume")
+        t8_angle = st.sidebar.number_input("200 DMA Slope >", value=5, key="t8_angle")
+
+    elif selected_tab == "DMA Bottoming":
+        st.sidebar.subheader("DMA Bottoming Settings")
+        selected_dma_bot = st.sidebar.selectbox("Select DMA", [20, 3, 200], index=0, key="dma_bot")
+        t9_min_angle = st.sidebar.number_input(f"Min Current {selected_dma_bot}DMA Angle", value=-2.0, step=0.5, key=f"t9_min_{selected_dma_bot}")
+        t9_max_angle = st.sidebar.number_input(f"Max Current {selected_dma_bot}DMA Angle", value=10.0, step=0.5, key=f"t9_max_{selected_dma_bot}")
+        t9_prev_max = st.sidebar.number_input(f"Max Previous {selected_dma_bot}DMA Angle", value=0.0, step=0.5, key=f"t9_prev_{selected_dma_bot}")
+
+    # --- Filter Logic and Display ---
     
     # helper to filter latest_df
     def get_display_data(tickers, include_vol_metrics=False):
         # Select relevant columns for display
-        cols = ['Ticker', 'Close', '20DMA', '200DMA', '200DMA_LINE_ANGLE', 'RSI_14', 'RSI_14_angle', '3DMA_LINE_ANGLE', 'Beta']
+        cols = ['Ticker', 'Close', '20DMA', '20DMA_LINE_ANGLE', '200DMA', '200DMA_LINE_ANGLE', 'RSI_14', 'RSI_14_angle', '3DMA_LINE_ANGLE', 'Beta']
         if include_vol_metrics:
             cols.extend(['Volume', 'VolumeRatio'])
             
@@ -484,8 +553,9 @@ def main():
         
         # Rename for display
         rename_map = {
-            'Ticker': 'Ticker', 'Close': 'Price', '20DMA': '20 DMA', '200DMA': '200 DMA', 
-            '200DMA_LINE_ANGLE': '200DMA Angle', 'RSI_14': 'RSI', 'RSI_14_angle': 'RSI Angle', 
+            'Ticker': 'Ticker', 'Close': 'Price', '20DMA': '20 DMA', '20DMA_LINE_ANGLE': '20DMA Angle',
+            '200DMA': '200 DMA', '200DMA_LINE_ANGLE': '200DMA Angle', 
+            'RSI_14': 'RSI', 'RSI_14_angle': 'RSI Angle', 
             '3DMA_LINE_ANGLE': '3DMA Angle', 'Beta': 'Beta'
         }
         if include_vol_metrics:
@@ -495,98 +565,6 @@ def main():
         # Round appropriate columns
         subset = subset.round(2)
         return subset
-
-    # 1. Low RSI (<30) + 200DMA Slope > 5
-    low_rsi_pos_slope_tickers = latest_df[
-        (latest_df['RSI_14'] < t1_rsi) & 
-        (latest_df['200DMA_LINE_ANGLE'] > t1_angle)
-    ]['Ticker'].tolist()
-    df_1 = get_display_data(low_rsi_pos_slope_tickers).sort_values(by='RSI', ascending=True)
-
-    # 2. Low Beta + 200DMA Slope > 5
-    beta_threshold = latest_df['Beta'].quantile(t2_beta_pct)
-    low_beta_pos_slope_tickers = latest_df[
-        (latest_df['Beta'] <= beta_threshold) & 
-        (latest_df['200DMA_LINE_ANGLE'] > t2_angle)
-    ]['Ticker'].tolist()
-    df_2 = get_display_data(low_beta_pos_slope_tickers).sort_values(by='Beta', ascending=True)
-    
-    # 3. Narrow Price Band (2 weeks) + 200DMA Slope > 5
-    narrow_band_tickers = []
-    candidates = latest_df[latest_df['200DMA_LINE_ANGLE'] > t3_angle]['Ticker'].tolist()
-    
-    for ticker in candidates:
-        stock_data = df[df['Ticker'] == ticker].sort_values('Date').tail(t3_days)
-        if len(stock_data) < t3_days:
-            continue
-        min_price = stock_data['Close'].min()
-        max_price = stock_data['Close'].max()
-        if (max_price - min_price) / min_price < t3_band_pct:
-            narrow_band_tickers.append(ticker)
-    df_3 = get_display_data(narrow_band_tickers)
-
-    # 4. Divergence Candidates with Slope Filter (200DMA Slope > 5)
-    # Filter by Slope -> Sort by 3DMA Angle -> Top 10
-    slope_filtered = latest_df[latest_df['200DMA_LINE_ANGLE'] > t4_angle]
-    divergence_slope_tickers = slope_filtered.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(10)['Ticker'].tolist()
-    df_4 = get_display_data(divergence_slope_tickers, include_vol_metrics=True).sort_values(by='3DMA Angle', ascending=False)
-    
-    # 5. Top 10 by 3DMA Angle (Unfiltered by Slope)
-    divergence_tickers = latest_df.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(t5_top_n)['Ticker'].tolist()
-    df_5 = get_display_data(divergence_tickers, include_vol_metrics=True).sort_values(by='3DMA Angle', ascending=False)
-
-    # 6. Actual Bullish Crossovers (20DMA crosses above 200DMA)
-    # latest > 200 AND prev <= 200
-    actual_crossover_tickers = latest_df[
-        (latest_df['20DMA'] > latest_df['200DMA']) &
-        (latest_df['Prev_20DMA'] <= latest_df['Prev_200DMA']) &
-        (latest_df['200DMA_LINE_ANGLE'] > crossover_angle)
-    ]['Ticker'].tolist()
-    df_6 = get_display_data(actual_crossover_tickers)
-
-    # 7. Potential Bullish Crossovers
-    # 20DMA < 200DMA (Below)
-    # Distance < Threshold %
-    # 20DMA Rising (Current > Prev)
-    # 200DMA Positive Slope
-    
-    # Avoid division by zero
-    mask_potential = (
-        (latest_df['20DMA'] < latest_df['200DMA']) &
-        (latest_df['200DMA'] != 0) &
-        ((abs(latest_df['20DMA'] - latest_df['200DMA']) / latest_df['200DMA']) * 100 < proximity_pct) &
-        (latest_df['20DMA'] > latest_df['Prev_20DMA']) &
-        (latest_df['200DMA_LINE_ANGLE'] > crossover_angle)
-    )
-    potential_crossover_tickers = latest_df[mask_potential]['Ticker'].tolist()
-    df_7 = get_display_data(potential_crossover_tickers)
-
-    # 8. Volume Shockers
-    # VolumeRatio > threshold
-    # 20DayAvgVolume > min_volume
-    # 200DMA_LINE_ANGLE > t8_angle
-    
-    shockers_mask = (
-        (latest_df['VolumeRatio'] > vol_shock_threshold) &
-        (latest_df['20DayAvgVolume'] > min_volume) &
-        (latest_df['200DMA_LINE_ANGLE'] > t8_angle)
-    )
-    volume_shockers_tickers = latest_df[shockers_mask]['Ticker'].tolist()
-    df_8 = get_display_data(volume_shockers_tickers, include_vol_metrics=True).sort_values(by='Vol Ratio', ascending=False)
-
-
-    # --- Display ---
-    
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-        "Low RSI", 
-        "Low Beta", 
-        "Narrow Band", 
-        "Divergence Slope",
-        "High 3DMA Angle",
-        "Actual Crossover",
-        "Potential Crossover",
-        "Volume Shockers"
-    ])
 
     def render_tab_content(data_df, description, key_prefix):
         st.markdown(f"**{description}**")
@@ -602,8 +580,14 @@ def main():
              display_data = data_df.style.background_gradient(subset=['Beta'], cmap='Blues')
         elif key_prefix == "tab1" and 'RSI' in data_df.columns:
              display_data = data_df.style.background_gradient(subset=['RSI'], cmap='RdYlGn_r')
-        elif (key_prefix == "tab4" or key_prefix == "tab5") and '3DMA Angle' in data_df.columns:
-             display_data = data_df.style.background_gradient(subset=['3DMA Angle'], cmap='Purples')
+        elif (key_prefix == "tab4" or key_prefix == "tab5"):
+             # Apply gradient to the angle column if present
+             # We look for columns ending in "Angle"
+             angle_cols = [c for c in data_df.columns if "Angle" in c]
+             if angle_cols:
+                  display_data = data_df.style.background_gradient(subset=angle_cols, cmap='Purples')
+             else:
+                  display_data = data_df.style
         else:
              display_data = data_df.style
 
@@ -646,29 +630,104 @@ def main():
         else:
             st.info("👆 Click a row in the table above to view the chart.")
 
-    with tab1:
+    # Render Active Tab Content Only
+    if selected_tab == "Low RSI":
+        low_rsi_pos_slope_tickers = latest_df[
+            (latest_df['RSI_14'] < t1_rsi) & 
+            (latest_df['200DMA_LINE_ANGLE'] > t1_angle)
+        ]['Ticker'].tolist()
+        df_1 = get_display_data(low_rsi_pos_slope_tickers).sort_values(by=['RSI', 'RSI Angle'], ascending=[True, True])
         render_tab_content(df_1, f"RSI < {t1_rsi} and 200 DMA Slope > {t1_angle}°", "tab1")
-
-    with tab2:
+        
+    elif selected_tab == "Low Beta":
+        beta_threshold = latest_df['Beta'].quantile(t2_beta_pct)
+        low_beta_pos_slope_tickers = latest_df[
+            (latest_df['Beta'] <= beta_threshold) & 
+            (latest_df['200DMA_LINE_ANGLE'] > t2_angle)
+        ]['Ticker'].tolist()
+        df_2 = get_display_data(low_beta_pos_slope_tickers).sort_values(by='Beta', ascending=True)
         render_tab_content(df_2, f"Low Beta (Bottom {int(t2_beta_pct*100)}%) and 200 DMA Slope > {t2_angle}°", "tab2")
 
-    with tab3:
+    elif selected_tab == "Narrow Band":
+        narrow_band_tickers = []
+        candidates = latest_df[latest_df['200DMA_LINE_ANGLE'] > t3_angle]['Ticker'].tolist()
+        for ticker in candidates:
+            stock_data = df[df['Ticker'] == ticker].sort_values('Date').tail(t3_days)
+            if len(stock_data) < t3_days:
+                continue
+            min_price = stock_data['Close'].min()
+            max_price = stock_data['Close'].max()
+            if (max_price - min_price) / min_price < t3_band_pct:
+                narrow_band_tickers.append(ticker)
+        df_3 = get_display_data(narrow_band_tickers)
         render_tab_content(df_3, f"Narrow Price Band ({int(t3_band_pct*100)}% range/{t3_days} days) and 200 DMA Slope > {t3_angle}°", "tab3")
-        
-    with tab4:
-        render_tab_content(df_4, f"Top 10 High 3DMA Angle (Divergence) with 200 DMA Slope > {t4_angle}°", "tab4")
-        
-    with tab5:
-        render_tab_content(df_5, f"Top {t5_top_n} Stocks by Highest 3DMA Angle (200DMA Slope > {t5_angle}°)", "tab5")
 
-    with tab6:
+    elif selected_tab == "Divergence Slope":
+        slope_filtered = latest_df[latest_df['200DMA_LINE_ANGLE'] > t4_angle]
+        divergence_slope_tickers = slope_filtered.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(10)['Ticker'].tolist()
+        df_4 = get_display_data(divergence_slope_tickers, include_vol_metrics=True).sort_values(by='3DMA Angle', ascending=False)
+        render_tab_content(df_4, f"Top 10 High 3DMA Angle (Divergence) with 200 DMA Slope > {t4_angle}°", "tab4")
+
+    elif selected_tab == "High DMA Angle":
+        target_col = f"{selected_dma}DMA_LINE_ANGLE"
+        display_name = f"{selected_dma}DMA Angle"
+        
+        # We need to ensure the target column is available for display if it's not standard
+        # But get_display_data currently has hardcoded cols. 
+        # Let's rely on get_display_data to have them or we might need to patch it.
+        # Actually get_display_data has 3DMA, 20DMA, 200DMA angles hardcoded or accessible?
+        # It has 200DMA_LINE_ANGLE, 3DMA_LINE_ANGLE, 20DMA_LINE_ANGLE.
+        # It seems correct.
+        
+        divergence_tickers = latest_df.sort_values(by=target_col, ascending=False).head(t5_top_n)['Ticker'].tolist()
+        df_5 = get_display_data(divergence_tickers, include_vol_metrics=True).sort_values(by=display_name, ascending=False)
+        render_tab_content(df_5, f"Top {t5_top_n} Stocks by Highest {display_name} (200DMA Slope > {t5_angle}°)", "tab5")
+
+    elif selected_tab == "Actual Crossover":
+        actual_crossover_tickers = latest_df[
+            (latest_df['20DMA'] > latest_df['200DMA']) &
+            (latest_df['Prev_20DMA'] <= latest_df['Prev_200DMA']) &
+            (latest_df['200DMA_LINE_ANGLE'] > crossover_angle)
+        ]['Ticker'].tolist()
+        df_6 = get_display_data(actual_crossover_tickers)
         render_tab_content(df_6, f"Actual Bullish Crossover (20DMA crosses 200DMA) + Slope > {crossover_angle}°", "tab6")
 
-    with tab7:
+    elif selected_tab == "Potential Crossover":
+        mask_potential = (
+            (latest_df['20DMA'] < latest_df['200DMA']) &
+            (latest_df['200DMA'] != 0) &
+            ((abs(latest_df['20DMA'] - latest_df['200DMA']) / latest_df['200DMA']) * 100 < proximity_pct) &
+            (latest_df['20DMA'] > latest_df['Prev_20DMA']) &
+            (latest_df['200DMA_LINE_ANGLE'] > crossover_angle)
+        )
+        potential_crossover_tickers = latest_df[mask_potential]['Ticker'].tolist()
+        df_7 = get_display_data(potential_crossover_tickers)
         render_tab_content(df_7, f"Potential Bullish Crossover (Gap < {proximity_pct}%) + Slope > {crossover_angle}°", "tab7")
 
-    with tab8:
+    elif selected_tab == "Volume Shockers":
+        shockers_mask = (
+            (latest_df['VolumeRatio'] > vol_shock_threshold) &
+            (latest_df['20DayAvgVolume'] > min_volume) &
+            (latest_df['200DMA_LINE_ANGLE'] > t8_angle)
+        )
+        volume_shockers_tickers = latest_df[shockers_mask]['Ticker'].tolist()
+        df_8 = get_display_data(volume_shockers_tickers, include_vol_metrics=True).sort_values(by='Vol Ratio', ascending=False)
         render_tab_content(df_8, f"Volume > {vol_shock_threshold}x Avg AND Avg Vol > {min_volume} AND Slope > {t8_angle}°", "tab8")
+
+    elif selected_tab == "DMA Bottoming":
+        cur_col = f"{selected_dma_bot}DMA_LINE_ANGLE"
+        prev_col = f"Prev_{selected_dma_bot}DMA_LINE_ANGLE"
+        display_name_bot = f"{selected_dma_bot}DMA Angle"
+        
+        bottoming_mask = (
+            (latest_df[prev_col] <= t9_prev_max) &
+            (latest_df[cur_col] > latest_df[prev_col]) &
+            (latest_df[cur_col] >= t9_min_angle) &
+            (latest_df[cur_col] <= t9_max_angle)
+        )
+        bottoming_tickers = latest_df[bottoming_mask]['Ticker'].tolist()
+        df_9 = get_display_data(bottoming_tickers).sort_values(by=display_name_bot, ascending=True)
+        render_tab_content(df_9, f"{selected_dma_bot}DMA Bottoming: Prev Angle <= {t9_prev_max}° → Current [{t9_min_angle}°, {t9_max_angle}°] (Turning Up)", "tab9")
 
 if __name__ == "__main__":
     main()
