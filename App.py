@@ -91,6 +91,9 @@ def load_data():
         # Calculate Previous Day's 20DMA and 200DMA for Crossover Logic
         df['Prev_20DMA'] = df.groupby('Ticker')['20DMA'].shift(1)
         df['Prev_200DMA'] = df.groupby('Ticker')['200DMA'].shift(1)
+
+        # Calculate 20-Day Volume SMA for Volume Shockers
+        df['Volume_20SMA'] = df.groupby('Ticker')['Volume'].transform(lambda x: x.rolling(window=20).mean())
         
         # Ensure we have the necessary angle columns if they aren't explicitly loaded (though csv should have them)
         # Based on add_metrics.py: 200DMA_LINE_ANGLE, RSI_14_angle
@@ -171,10 +174,13 @@ def plot_charts(df, ticker, days=180):
             line=dict(color='orange', width=1, dash='dot'), name='20 VWMA'
         ), row=1, col=1)
 
+    # Determine colors for volume bars based on price direction (Close >= Open)
+    volume_colors = ['#00e676' if c >= o else '#ff5252' for c, o in zip(stock_df['Close'], stock_df['Open'])]
+
     # 2. Volume Chart
     fig.add_trace(go.Bar(
         x=stock_df['Date'], y=stock_df['Volume'],
-        name='Volume', marker_color='teal'
+        name='Volume', marker_color=volume_colors
     ), row=2, col=1)
 
     # 3. RSI Chart
@@ -264,10 +270,15 @@ def main():
 
     with st.sidebar.expander("Tab 5: 3DMA Angle"):
         t5_top_n = st.number_input("Top N Stocks", value=10, min_value=5, max_value=50, key="t5_top_n")
+        t5_angle = st.number_input("200 DMA Slope >", value=5, key="t5_angle")
         
     with st.sidebar.expander("Tab 6 & 7: Crossovers"):
         crossover_angle = st.number_input("200 DMA Slope >", value=5, key="crossover_angle")
         proximity_pct = st.slider("Potential Proximity %", 0.1, 5.0, 2.0, 0.1, key="proximity_pct")
+        
+    with st.sidebar.expander("Tab 8: Volume Shockers"):
+        t8_multiplier = st.slider("Volume Multiplier (x Avg)", 1.0, 10.0, 2.0, 0.1, key="t8_multiplier")
+        t8_angle = st.number_input("200 DMA Slope >", value=5, key="t8_angle")
 
 
     # --- Filter Logic ---
@@ -319,8 +330,9 @@ def main():
     divergence_slope_tickers = slope_filtered.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(10)['Ticker'].tolist()
     df_4 = get_display_data(divergence_slope_tickers)
     
-    # 5. Top 10 by 3DMA Angle (Unfiltered by Slope)
-    divergence_tickers = latest_df.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(t5_top_n)['Ticker'].tolist()
+    # 5. Top 10 by 3DMA Angle (Filtered by Slope)
+    slope_filtered_5 = latest_df[latest_df['200DMA_LINE_ANGLE'] > t5_angle]
+    divergence_tickers = slope_filtered_5.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(t5_top_n)['Ticker'].tolist()
     df_5 = get_display_data(divergence_tickers)
 
     # 6. Actual Bullish Crossovers (20DMA crosses above 200DMA)
@@ -349,17 +361,28 @@ def main():
     potential_crossover_tickers = latest_df[mask_potential]['Ticker'].tolist()
     df_7 = get_display_data(potential_crossover_tickers)
 
+    # 8. Volume Shockers
+    # Volume > Multiplier * 20DMA_Volume AND 200DMA Slope > Angle
+    # Avoid comparison with NaNs
+    mask_volume = (
+        (latest_df['Volume'] > t8_multiplier * latest_df['Volume_20SMA']) &
+        (latest_df['200DMA_LINE_ANGLE'] > t8_angle)
+    )
+    volume_shocker_tickers = latest_df[mask_volume]['Ticker'].tolist()
+    df_8 = get_display_data(volume_shocker_tickers)
+
 
     # --- Display ---
     
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "Low RSI", 
         "Low Beta", 
         "Narrow Band", 
         "Divergence Slope",
         "High 3DMA Angle",
         "Actual Crossover",
-        "Potential Crossover"
+        "Potential Crossover",
+        "Volume Shockers"
     ])
 
     def render_tab_content(data_df, description, key_prefix):
@@ -420,13 +443,16 @@ def main():
         render_tab_content(df_4, f"Top 10 High 3DMA Angle (Divergence) with 200 DMA Slope > {t4_angle}°", "tab4")
         
     with tab5:
-        render_tab_content(df_5, f"Top {t5_top_n} Stocks by Highest 3DMA Angle (Unfiltered Slope)", "tab5")
+        render_tab_content(df_5, f"Top {t5_top_n} Stocks by Highest 3DMA Angle (200DMA Slope > {t5_angle}°)", "tab5")
 
     with tab6:
         render_tab_content(df_6, f"Actual Bullish Crossover (20DMA crosses 200DMA) + Slope > {crossover_angle}°", "tab6")
 
     with tab7:
         render_tab_content(df_7, f"Potential Bullish Crossover (Gap < {proximity_pct}%) + Slope > {crossover_angle}°", "tab7")
+
+    with tab8:
+        render_tab_content(df_8, f"Volume Shockers (Vol > {t8_multiplier}x 20-Day Avg) + Slope > {t8_angle}°", "tab8")
 
 if __name__ == "__main__":
     main()
