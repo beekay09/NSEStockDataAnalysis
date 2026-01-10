@@ -27,6 +27,49 @@ st.markdown("""
         background-color: #0e1117;
         color: #fafafa;
     }
+    
+    /* Global Text Visibility Force */
+    .stMarkdown, .stText, p, label, .stRadio div, .stCheckbox div {
+        color: #fafafa !important;
+    }
+
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background-color: #262730;
+        border-right: 1px solid #464b5d;
+    }
+    [data-testid="stSidebar"] .stMarkdown, 
+    [data-testid="stSidebar"] label, 
+    [data-testid="stSidebar"] .stRadio div, 
+    [data-testid="stSidebar"] .stCheckbox div {
+        color: #ffffff !important;
+    }
+
+    /* Inputs in Sidebar */
+    [data-testid="stSidebar"] input {
+        background-color: #464b5d !important;
+        color: white !important;
+        border: 1px solid #555 !important;
+    }
+    
+    /* Header Styling */
+    header[data-testid="stHeader"] {
+        background-color: #262730;
+        border-bottom: 1px solid #464b5d;
+    }
+    
+    /* Tabs Styling */
+    button[data-baseweb="tab"] {
+        background-color: transparent;
+        color: #fafafa;
+        border: 1px solid transparent;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+         background-color: #464b5d;
+         color: #00e676 !important;
+         border: 1px solid #00e676;
+    }
+    
     /* Buttons in the grid */
     .stButton > button {
         width: 100%;
@@ -423,19 +466,16 @@ def main():
         proximity_pct = st.slider("Potential Proximity %", 0.1, 5.0, 2.0, 0.1, key="proximity_pct")
         
     with st.sidebar.expander("Tab 8: Volume Shockers"):
-        t8_multiplier = st.slider("Volume Multiplier (x Avg)", 1.0, 10.0, 2.0, 0.1, key="t8_multiplier")
-        t8_angle = st.number_input("200 DMA Slope >", value=5, key="t8_angle")
-
-    with st.sidebar.expander("Tab 8: Volume Shockers"):
         vol_shock_threshold = st.slider("Volume Ratio (> x times avg)", 1.0, 10.0, 2.0, 0.1, key="vol_shock_threshold")
         min_volume = st.number_input("Min Average Volume", value=10000, step=10000, key="min_volume")
+        t8_angle = st.number_input("200 DMA Slope >", value=5, key="t8_angle")
 
     # --- Filter Logic ---
     
     # helper to filter latest_df
     def get_display_data(tickers, include_vol_metrics=False):
         # Select relevant columns for display
-        cols = ['Ticker', 'Close', '20DMA', '200DMA', '200DMA_LINE_ANGLE', 'RSI_14', '3DMA_LINE_ANGLE', 'Beta']
+        cols = ['Ticker', 'Close', '20DMA', '200DMA', '200DMA_LINE_ANGLE', 'RSI_14', 'RSI_14_angle', '3DMA_LINE_ANGLE', 'Beta']
         if include_vol_metrics:
             cols.extend(['Volume', 'VolumeRatio'])
             
@@ -445,7 +485,8 @@ def main():
         # Rename for display
         rename_map = {
             'Ticker': 'Ticker', 'Close': 'Price', '20DMA': '20 DMA', '200DMA': '200 DMA', 
-            '200DMA_LINE_ANGLE': '200DMA Angle', 'RSI_14': 'RSI', '3DMA_LINE_ANGLE': '3DMA Angle', 'Beta': 'Beta'
+            '200DMA_LINE_ANGLE': '200DMA Angle', 'RSI_14': 'RSI', 'RSI_14_angle': 'RSI Angle', 
+            '3DMA_LINE_ANGLE': '3DMA Angle', 'Beta': 'Beta'
         }
         if include_vol_metrics:
             rename_map.update({'Volume': 'Volume', 'VolumeRatio': 'Vol Ratio'})
@@ -460,7 +501,7 @@ def main():
         (latest_df['RSI_14'] < t1_rsi) & 
         (latest_df['200DMA_LINE_ANGLE'] > t1_angle)
     ]['Ticker'].tolist()
-    df_1 = get_display_data(low_rsi_pos_slope_tickers)
+    df_1 = get_display_data(low_rsi_pos_slope_tickers).sort_values(by='RSI', ascending=True)
 
     # 2. Low Beta + 200DMA Slope > 5
     beta_threshold = latest_df['Beta'].quantile(t2_beta_pct)
@@ -492,7 +533,7 @@ def main():
     
     # 5. Top 10 by 3DMA Angle (Unfiltered by Slope)
     divergence_tickers = latest_df.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(t5_top_n)['Ticker'].tolist()
-    df_5 = get_display_data(divergence_tickers)
+    df_5 = get_display_data(divergence_tickers, include_vol_metrics=True).sort_values(by='3DMA Angle', ascending=False)
 
     # 6. Actual Bullish Crossovers (20DMA crosses above 200DMA)
     # latest > 200 AND prev <= 200
@@ -520,6 +561,19 @@ def main():
     potential_crossover_tickers = latest_df[mask_potential]['Ticker'].tolist()
     df_7 = get_display_data(potential_crossover_tickers)
 
+    # 8. Volume Shockers
+    # VolumeRatio > threshold
+    # 20DayAvgVolume > min_volume
+    # 200DMA_LINE_ANGLE > t8_angle
+    
+    shockers_mask = (
+        (latest_df['VolumeRatio'] > vol_shock_threshold) &
+        (latest_df['20DayAvgVolume'] > min_volume) &
+        (latest_df['200DMA_LINE_ANGLE'] > t8_angle)
+    )
+    volume_shockers_tickers = latest_df[shockers_mask]['Ticker'].tolist()
+    df_8 = get_display_data(volume_shockers_tickers, include_vol_metrics=True).sort_values(by='Vol Ratio', ascending=False)
+
 
     # --- Display ---
     
@@ -546,6 +600,8 @@ def main():
              display_data = data_df.style.background_gradient(subset=['Vol Ratio'], cmap='YlOrRd')
         elif key_prefix == "tab2" and 'Beta' in data_df.columns:
              display_data = data_df.style.background_gradient(subset=['Beta'], cmap='Blues')
+        elif key_prefix == "tab1" and 'RSI' in data_df.columns:
+             display_data = data_df.style.background_gradient(subset=['RSI'], cmap='RdYlGn_r')
         elif (key_prefix == "tab4" or key_prefix == "tab5") and '3DMA Angle' in data_df.columns:
              display_data = data_df.style.background_gradient(subset=['3DMA Angle'], cmap='Purples')
         else:
@@ -610,6 +666,9 @@ def main():
 
     with tab7:
         render_tab_content(df_7, f"Potential Bullish Crossover (Gap < {proximity_pct}%) + Slope > {crossover_angle}°", "tab7")
+
+    with tab8:
+        render_tab_content(df_8, f"Volume > {vol_shock_threshold}x Avg AND Avg Vol > {min_volume} AND Slope > {t8_angle}°", "tab8")
 
 if __name__ == "__main__":
     main()
