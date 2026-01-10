@@ -165,7 +165,16 @@ def calculate_heikin_ashi(df):
     
     return ha_df
 
-def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi"):
+def calculate_bollinger_bands(df, window=20, num_std=2):
+    """Calculate Bollinger Bands."""
+    bb_df = df.copy()
+    bb_df['SMA'] = bb_df['Close'].rolling(window=window).mean()
+    bb_df['STD'] = bb_df['Close'].rolling(window=window).std()
+    bb_df['Upper'] = bb_df['SMA'] + (bb_df['STD'] * num_std)
+    bb_df['Lower'] = bb_df['SMA'] - (bb_df['STD'] * num_std)
+    return bb_df
+
+def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=True):
     """Render interactive Plotly charts for a specific ticker."""
     stock_df = df[df['Ticker'] == ticker].copy()
     stock_df = stock_df.sort_values('Date')
@@ -179,6 +188,11 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi"):
     else:
         chart_df = stock_df
 
+    # Calculate Bollinger Bands if requested (using original Close prices for accuracy)
+    if show_bollinger:
+        bb_data = calculate_bollinger_bands(stock_df)
+        # Align with chart_df index if needed, but here they are same length/index
+        
     fig = make_subplots(
         rows=3, cols=1, 
         shared_xaxes=True, 
@@ -199,6 +213,21 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi"):
         low=chart_df['Low'], close=chart_df['Close'],
         name=f'Price ({candle_type})'
     ), row=1, col=1)
+
+    # Add Bollinger Bands
+    if show_bollinger:
+        fig.add_trace(go.Scatter(
+            x=bb_data['Date'], y=bb_data['Upper'],
+            line=dict(color='rgba(200, 200, 200, 0.5)', width=1),
+            name='Upper BB', showlegend=False
+        ), row=1, col=1)
+        
+        fig.add_trace(go.Scatter(
+            x=bb_data['Date'], y=bb_data['Lower'],
+            line=dict(color='rgba(200, 200, 200, 0.5)', width=1),
+            fill='tonexty', fillcolor='rgba(200, 200, 200, 0.1)',
+            name='Lower BB', showlegend=False
+        ), row=1, col=1)
 
     # Add 20 DMA (using original data for accuracy)
     if '20DMA' in stock_df.columns:
@@ -308,6 +337,7 @@ def main():
     timeframe_days = timeframe_options[selected_timeframe]
 
     candle_type = st.sidebar.radio("Candle Type", ["Heikin Ashi", "Normal"], index=0)
+    show_bollinger = st.sidebar.checkbox("Show Bollinger Bands", value=True)
 
     st.sidebar.header("Filter Settings")
     
@@ -480,7 +510,7 @@ def main():
             col4.metric("3 DMA Angle", f"{row['3DMA Angle']:.2f}°")
             col5.metric("Beta", f"{row['Beta']:.2f}")
             
-            plot_charts(df, selected_ticker, timeframe_days, candle_type)
+            plot_charts(df, selected_ticker, timeframe_days, candle_type, show_bollinger)
         else:
             st.info("👆 Click a row in the table above to view the chart.")
 
