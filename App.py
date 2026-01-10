@@ -126,13 +126,58 @@ def calculate_beta_metrics(df):
             
     return beta_map
 
-def plot_charts(df, ticker, days=180):
+def calculate_heikin_ashi(df):
+    """Calculate Heikin Ashi candles from a DataFrame with Open, High, Low, Close."""
+    ha_df = df.copy()
+    
+    # HA Close
+    ha_df['Close'] = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
+    
+    # HA Open
+    # Initialize with the first row's data
+    ha_df['Open'] = 0.0
+    # We need to iterate because HA Open depends on previous HA Open
+    # Using a list for speed
+    open_prices = df['Open'].values
+    close_prices = df['Close'].values
+    ha_open = [ (open_prices[0] + close_prices[0]) / 2 ]
+    
+    # Calculate subsequent HA Opens
+    # HA_Open = (Prev_HA_Open + Prev_HA_Close) / 2
+    # Note: We use the *calculated* HA values for the previous candle
+    
+    # However, standard formula often uses: (Prev_HA_Open + Prev_HA_Close) / 2
+    # Let's do it iteratively
+    
+    ha_close_values = ha_df['Close'].values
+    
+    for i in range(1, len(df)):
+        prev_open = ha_open[-1]
+        prev_close = ha_close_values[i-1]
+        current_open = (prev_open + prev_close) / 2
+        ha_open.append(current_open)
+        
+    ha_df['Open'] = ha_open
+    
+    # HA High and Low
+    ha_df['High'] = ha_df[['High', 'Open', 'Close']].max(axis=1)
+    ha_df['Low'] = ha_df[['Low', 'Open', 'Close']].min(axis=1)
+    
+    return ha_df
+
+def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi"):
     """Render interactive Plotly charts for a specific ticker."""
     stock_df = df[df['Ticker'] == ticker].copy()
     stock_df = stock_df.sort_values('Date')
     
     # Filter for the selected timeframe
     stock_df = stock_df.tail(days)
+
+    # Calculate Heikin Ashi if selected
+    if candle_type == "Heikin Ashi":
+        chart_df = calculate_heikin_ashi(stock_df)
+    else:
+        chart_df = stock_df
 
     fig = make_subplots(
         rows=3, cols=1, 
@@ -143,14 +188,19 @@ def plot_charts(df, ticker, days=180):
     )
 
     # 1. Price Chart with moving averages
+    # Use chart_df for candles, but stock_df (original) for moving averages if we want them on true price?
+    # Usually MAs are overlaid on the candles. If we show HA candles, MAs might look slightly off if they are based on true close.
+    # Standard practice: Show HA candles, but MAs are usually still based on original Close.
+    # However, if we plot them on the same chart, they will align with the HA candles roughly.
+    
     fig.add_trace(go.Candlestick(
-        x=stock_df['Date'],
-        open=stock_df['Open'], high=stock_df['High'],
-        low=stock_df['Low'], close=stock_df['Close'],
-        name='Price'
+        x=chart_df['Date'],
+        open=chart_df['Open'], high=chart_df['High'],
+        low=chart_df['Low'], close=chart_df['Close'],
+        name=f'Price ({candle_type})'
     ), row=1, col=1)
 
-    # Add 20 DMA
+    # Add 20 DMA (using original data for accuracy)
     if '20DMA' in stock_df.columns:
         fig.add_trace(go.Scatter(
             x=stock_df['Date'], y=stock_df['20DMA'],
@@ -172,9 +222,13 @@ def plot_charts(df, ticker, days=180):
         ), row=1, col=1)
 
     # 2. Volume Chart
+    # Color Volume based on Price Action (Close >= Open -> Green, else Red)
+    # We use stock_df (original data) for this logic to reflect true market pressure
+    volume_colors = ['#00e676' if c >= o else '#ff1744' for c, o in zip(stock_df['Close'], stock_df['Open'])]
+
     fig.add_trace(go.Bar(
         x=stock_df['Date'], y=stock_df['Volume'],
-        name='Volume', marker_color='teal'
+        name='Volume', marker_color=volume_colors
     ), row=2, col=1)
 
     # 3. RSI Chart
@@ -190,7 +244,7 @@ def plot_charts(df, ticker, days=180):
 
     # Layout updates
     fig.update_layout(
-        title=f"{ticker} Technical Analysis",
+        title=f"{ticker} Technical Analysis ({candle_type})",
         xaxis_rangeslider_visible=False,
         height=700,
         showlegend=True,
@@ -231,6 +285,12 @@ def main():
     with st.spinner("Calculating metrics..."):
         beta_map = calculate_beta_metrics(df)
 
+    # Calculate Volume Metrics (On-the-fly)
+    # We need 20-day average volume. 
+    # Since we have the full df, we can calculate it.
+    # Note: df is sorted by Ticker and Date.
+    df['20DayAvgVolume'] = df.groupby('Ticker')['Volume'].transform(lambda x: x.rolling(20).mean())
+    
     # Get the latest data for each ticker for filtering logic
     # We essentially want to check the criteria based on the *latest* available date for each stock.
     latest_df = df.sort_values(by=['Ticker', 'Date']).groupby('Ticker').tail(1).copy()
@@ -238,11 +298,16 @@ def main():
     # Map Beta to latest_df
     latest_df['Beta'] = latest_df['Ticker'].map(beta_map)
     
+    # Calculate Volume Ratio for latest data
+    latest_df['VolumeRatio'] = latest_df['Volume'] / latest_df['20DayAvgVolume']
+    
     # --- Sidebar Controls ---
     st.sidebar.header("Chart Settings")
     timeframe_options = {"3 Months": 90, "6 Months": 180, "1 Year": 365, "2 Years": 730, "Max": 5000}
     selected_timeframe = st.sidebar.selectbox("Timeframe", list(timeframe_options.keys()), index=1)
     timeframe_days = timeframe_options[selected_timeframe]
+
+    candle_type = st.sidebar.radio("Candle Type", ["Heikin Ashi", "Normal"], index=0)
 
     st.sidebar.header("Filter Settings")
     
@@ -269,17 +334,20 @@ def main():
         crossover_angle = st.number_input("200 DMA Slope >", value=5, key="crossover_angle")
         proximity_pct = st.slider("Potential Proximity %", 0.1, 5.0, 2.0, 0.1, key="proximity_pct")
 
+    with st.sidebar.expander("Tab 8: Volume Shockers"):
+        vol_shock_threshold = st.slider("Volume Ratio (> x times avg)", 1.0, 10.0, 2.0, 0.1, key="vol_shock_threshold")
+        min_volume = st.number_input("Min Average Volume", value=10000, step=10000, key="min_volume")
 
     # --- Filter Logic ---
     
     # helper to filter latest_df
     def get_display_data(tickers):
         # Select relevant columns for display
-        cols = ['Ticker', 'Close', '20DMA', '200DMA', '200DMA_LINE_ANGLE', 'RSI_14', '3DMA_LINE_ANGLE', 'Beta']
+        cols = ['Ticker', 'Close', '20DMA', '200DMA', '200DMA_LINE_ANGLE', 'RSI_14', '3DMA_LINE_ANGLE', 'Beta', 'Volume', 'VolumeRatio']
         # Filter rows
         subset = latest_df[latest_df['Ticker'].isin(tickers)][cols].copy()
         # Rename for display
-        subset.columns = ['Ticker', 'Price', '20 DMA', '200 DMA', '200DMA Angle', 'RSI', '3DMA Angle', 'Beta']
+        subset.columns = ['Ticker', 'Price', '20 DMA', '200 DMA', '200DMA Angle', 'RSI', '3DMA Angle', 'Beta', 'Volume', 'Vol Ratio']
         # Round appropriate columns
         subset = subset.round(2)
         return subset
@@ -349,17 +417,26 @@ def main():
     potential_crossover_tickers = latest_df[mask_potential]['Ticker'].tolist()
     df_7 = get_display_data(potential_crossover_tickers)
 
+    # 8. Volume Shockers
+    # Volume > Threshold * AvgVolume AND AvgVolume > MinVolume
+    vol_shock_tickers = latest_df[
+        (latest_df['VolumeRatio'] > vol_shock_threshold) &
+        (latest_df['20DayAvgVolume'] > min_volume)
+    ]['Ticker'].tolist()
+    df_8 = get_display_data(vol_shock_tickers)
+
 
     # --- Display ---
     
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "Low RSI", 
         "Low Beta", 
         "Narrow Band", 
         "Divergence Slope",
         "High 3DMA Angle",
         "Actual Crossover",
-        "Potential Crossover"
+        "Potential Crossover",
+        "Volume Shockers"
     ])
 
     def render_tab_content(data_df, description, key_prefix):
@@ -403,7 +480,7 @@ def main():
             col4.metric("3 DMA Angle", f"{row['3DMA Angle']:.2f}°")
             col5.metric("Beta", f"{row['Beta']:.2f}")
             
-            plot_charts(df, selected_ticker, timeframe_days)
+            plot_charts(df, selected_ticker, timeframe_days, candle_type)
         else:
             st.info("👆 Click a row in the table above to view the chart.")
 
@@ -427,6 +504,9 @@ def main():
 
     with tab7:
         render_tab_content(df_7, f"Potential Bullish Crossover (Gap < {proximity_pct}%) + Slope > {crossover_angle}°", "tab7")
+
+    with tab8:
+        render_tab_content(df_8, f"Volume > {vol_shock_threshold}x 20-Day Avg (Min Avg Vol: {min_volume})", "tab8")
 
 if __name__ == "__main__":
     main()
