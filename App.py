@@ -129,13 +129,90 @@ def calculate_beta_metrics(df):
             
     return beta_map
 
-def plot_charts(df, ticker, days=180):
+def calculate_heikin_ashi(df):
+    """Calculate Heikin Ashi candles from a DataFrame with Open, High, Low, Close."""
+    ha_df = df.copy()
+    
+    # HA Close
+    ha_df['Close'] = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
+    
+    # HA Open
+    # Initialize with the first row's data
+    ha_df['Open'] = 0.0
+    # We need to iterate because HA Open depends on previous HA Open
+    # Using a list for speed
+    open_prices = df['Open'].values
+    close_prices = df['Close'].values
+    ha_open = [ (open_prices[0] + close_prices[0]) / 2 ]
+    
+    # Calculate subsequent HA Opens
+    # HA_Open = (Prev_HA_Open + Prev_HA_Close) / 2
+    # Note: We use the *calculated* HA values for the previous candle
+    
+    # However, standard formula often uses: (Prev_HA_Open + Prev_HA_Close) / 2
+    # Let's do it iteratively
+    
+    ha_close_values = ha_df['Close'].values
+    
+    for i in range(1, len(df)):
+        prev_open = ha_open[-1]
+        prev_close = ha_close_values[i-1]
+        current_open = (prev_open + prev_close) / 2
+        ha_open.append(current_open)
+        
+    ha_df['Open'] = ha_open
+    
+    # HA High and Low
+    ha_df['High'] = ha_df[['High', 'Open', 'Close']].max(axis=1)
+    ha_df['Low'] = ha_df[['Low', 'Open', 'Close']].min(axis=1)
+    
+    return ha_df
+
+def calculate_bollinger_bands(df, window=20, num_std=2):
+    """Calculate Bollinger Bands."""
+    bb_df = df.copy()
+    bb_df['SMA'] = bb_df['Close'].rolling(window=window).mean()
+    bb_df['STD'] = bb_df['Close'].rolling(window=window).std()
+    bb_df['Upper'] = bb_df['SMA'] + (bb_df['STD'] * num_std)
+    bb_df['Lower'] = bb_df['SMA'] - (bb_df['STD'] * num_std)
+    return bb_df
+
+def calculate_volume_profile(df, bins=50):
+    """Calculate Volume Profile."""
+    # Use Close price for binning
+    price = df['Close']
+    volume = df['Volume']
+    
+    # Create bins
+    hist, bin_edges = np.histogram(price, bins=bins, weights=volume)
+    
+    # Center of bins
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    
+    vp_df = pd.DataFrame({'Price': bin_centers, 'Volume': hist})
+    return vp_df
+
+def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=True, show_volume_profile=False):
     """Render interactive Plotly charts for a specific ticker."""
     stock_df = df[df['Ticker'] == ticker].copy()
     stock_df = stock_df.sort_values('Date')
     
     # Filter for the selected timeframe
     stock_df = stock_df.tail(days)
+
+    # Calculate Heikin Ashi if selected
+    if candle_type == "Heikin Ashi":
+        chart_df = calculate_heikin_ashi(stock_df)
+    else:
+        chart_df = stock_df
+
+    # Calculate Bollinger Bands if requested (using original Close prices for accuracy)
+    if show_bollinger:
+        bb_data = calculate_bollinger_bands(stock_df)
+        
+    # Calculate Volume Profile if requested
+    if show_volume_profile:
+        vp_data = calculate_volume_profile(stock_df)
 
     fig = make_subplots(
         rows=3, cols=1, 
@@ -146,14 +223,44 @@ def plot_charts(df, ticker, days=180):
     )
 
     # 1. Price Chart with moving averages
+    
+    # Volume Profile (Horizontal Bars) - Add FIRST so it's behind candles? Or use opacity.
+    # We use a secondary x-axis for this.
+    if show_volume_profile:
+        fig.add_trace(go.Bar(
+            y=vp_data['Price'],
+            x=vp_data['Volume'],
+            orientation='h',
+            name='Volume Profile',
+            marker_color='rgba(200, 200, 200, 0.5)',
+            xaxis='x2', # Use secondary x-axis
+            showlegend=False,
+            hoverinfo='none' # Reduce clutter
+        ), row=1, col=1)
+
     fig.add_trace(go.Candlestick(
-        x=stock_df['Date'],
-        open=stock_df['Open'], high=stock_df['High'],
-        low=stock_df['Low'], close=stock_df['Close'],
-        name='Price'
+        x=chart_df['Date'],
+        open=chart_df['Open'], high=chart_df['High'],
+        low=chart_df['Low'], close=chart_df['Close'],
+        name=f'Price ({candle_type})'
     ), row=1, col=1)
 
-    # Add 20 DMA
+    # Add Bollinger Bands
+    if show_bollinger:
+        fig.add_trace(go.Scatter(
+            x=bb_data['Date'], y=bb_data['Upper'],
+            line=dict(color='rgba(200, 200, 200, 0.5)', width=1),
+            name='Upper BB', showlegend=False
+        ), row=1, col=1)
+        
+        fig.add_trace(go.Scatter(
+            x=bb_data['Date'], y=bb_data['Lower'],
+            line=dict(color='rgba(200, 200, 200, 0.5)', width=1),
+            fill='tonexty', fillcolor='rgba(200, 200, 200, 0.1)',
+            name='Lower BB', showlegend=False
+        ), row=1, col=1)
+
+    # Add 20 DMA (using original data for accuracy)
     if '20DMA' in stock_df.columns:
         fig.add_trace(go.Scatter(
             x=stock_df['Date'], y=stock_df['20DMA'],
@@ -178,8 +285,13 @@ def plot_charts(df, ticker, days=180):
     volume_colors = ['#00e676' if c >= o else '#ff5252' for c, o in zip(stock_df['Close'], stock_df['Open'])]
 
     # 2. Volume Chart
+    # Color Volume based on Price Action (Close >= Open -> Green, else Red)
+    # We use stock_df (original data) for this logic to reflect true market pressure
+    volume_colors = ['#00e676' if c >= o else '#ff1744' for c, o in zip(stock_df['Close'], stock_df['Open'])]
+
     fig.add_trace(go.Bar(
         x=stock_df['Date'], y=stock_df['Volume'],
+        name='Volume', marker_color=volume_colors
         name='Volume', marker_color=volume_colors
     ), row=2, col=1)
 
@@ -195,8 +307,8 @@ def plot_charts(df, ticker, days=180):
         fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
 
     # Layout updates
-    fig.update_layout(
-        title=f"{ticker} Technical Analysis",
+    layout_update = dict(
+        title=f"{ticker} Technical Analysis ({candle_type})",
         xaxis_rangeslider_visible=False,
         height=700,
         showlegend=True,
@@ -205,6 +317,28 @@ def plot_charts(df, ticker, days=180):
         paper_bgcolor='#0e1117',
         font=dict(color='#fafafa')
     )
+    
+    if show_volume_profile:
+        # Configure secondary x-axis for Volume Profile
+        # We want it to be on top or bottom? Or just overlay?
+        # 'overlaying="x"' means it shares the same y-axis area but has its own x-axis.
+        # 'side="top"' puts the axis labels on top (we can hide them).
+        # We reverse it or set range so bars appear on the right or left?
+        # Usually VP is on the right or left.
+        # Let's put it on the right side, growing leftwards? Or left side growing rightwards?
+        # Let's try left side growing rightwards, but with a range that makes them take up only ~20-30% of the width.
+        
+        max_vol = vp_data['Volume'].max()
+        # Set range from 0 to max_vol * 4 (so bars take 1/4th of width)
+        layout_update['xaxis2'] = dict(
+            overlaying='x', 
+            side='top', 
+            showgrid=False, 
+            range=[0, max_vol * 5], 
+            visible=False # Hide the axis itself
+        )
+
+    fig.update_layout(**layout_update)
     
     # Customize axes to reduce grid clutter
     # Price Chart (Row 1): Subtle Grid
@@ -237,6 +371,12 @@ def main():
     with st.spinner("Calculating metrics..."):
         beta_map = calculate_beta_metrics(df)
 
+    # Calculate Volume Metrics (On-the-fly)
+    # We need 20-day average volume. 
+    # Since we have the full df, we can calculate it.
+    # Note: df is sorted by Ticker and Date.
+    df['20DayAvgVolume'] = df.groupby('Ticker')['Volume'].transform(lambda x: x.rolling(20).mean())
+    
     # Get the latest data for each ticker for filtering logic
     # We essentially want to check the criteria based on the *latest* available date for each stock.
     latest_df = df.sort_values(by=['Ticker', 'Date']).groupby('Ticker').tail(1).copy()
@@ -244,11 +384,18 @@ def main():
     # Map Beta to latest_df
     latest_df['Beta'] = latest_df['Ticker'].map(beta_map)
     
+    # Calculate Volume Ratio for latest data
+    latest_df['VolumeRatio'] = latest_df['Volume'] / latest_df['20DayAvgVolume']
+    
     # --- Sidebar Controls ---
     st.sidebar.header("Chart Settings")
     timeframe_options = {"3 Months": 90, "6 Months": 180, "1 Year": 365, "2 Years": 730, "Max": 5000}
     selected_timeframe = st.sidebar.selectbox("Timeframe", list(timeframe_options.keys()), index=1)
     timeframe_days = timeframe_options[selected_timeframe]
+
+    candle_type = st.sidebar.radio("Candle Type", ["Heikin Ashi", "Normal"], index=0)
+    show_bollinger = st.sidebar.checkbox("Show Bollinger Bands", value=True)
+    show_volume_profile = st.sidebar.checkbox("Show Volume Profile", value=False)
 
     st.sidebar.header("Filter Settings")
     
@@ -280,17 +427,31 @@ def main():
         t8_multiplier = st.slider("Volume Multiplier (x Avg)", 1.0, 10.0, 2.0, 0.1, key="t8_multiplier")
         t8_angle = st.number_input("200 DMA Slope >", value=5, key="t8_angle")
 
+    with st.sidebar.expander("Tab 8: Volume Shockers"):
+        vol_shock_threshold = st.slider("Volume Ratio (> x times avg)", 1.0, 10.0, 2.0, 0.1, key="vol_shock_threshold")
+        min_volume = st.number_input("Min Average Volume", value=10000, step=10000, key="min_volume")
 
     # --- Filter Logic ---
     
     # helper to filter latest_df
-    def get_display_data(tickers):
+    def get_display_data(tickers, include_vol_metrics=False):
         # Select relevant columns for display
         cols = ['Ticker', 'Close', '20DMA', '200DMA', '200DMA_LINE_ANGLE', 'RSI_14', '3DMA_LINE_ANGLE', 'Beta']
+        if include_vol_metrics:
+            cols.extend(['Volume', 'VolumeRatio'])
+            
         # Filter rows
         subset = latest_df[latest_df['Ticker'].isin(tickers)][cols].copy()
+        
         # Rename for display
-        subset.columns = ['Ticker', 'Price', '20 DMA', '200 DMA', '200DMA Angle', 'RSI', '3DMA Angle', 'Beta']
+        rename_map = {
+            'Ticker': 'Ticker', 'Close': 'Price', '20DMA': '20 DMA', '200DMA': '200 DMA', 
+            '200DMA_LINE_ANGLE': '200DMA Angle', 'RSI_14': 'RSI', '3DMA_LINE_ANGLE': '3DMA Angle', 'Beta': 'Beta'
+        }
+        if include_vol_metrics:
+            rename_map.update({'Volume': 'Volume', 'VolumeRatio': 'Vol Ratio'})
+            
+        subset = subset.rename(columns=rename_map)
         # Round appropriate columns
         subset = subset.round(2)
         return subset
@@ -308,7 +469,7 @@ def main():
         (latest_df['Beta'] <= beta_threshold) & 
         (latest_df['200DMA_LINE_ANGLE'] > t2_angle)
     ]['Ticker'].tolist()
-    df_2 = get_display_data(low_beta_pos_slope_tickers)
+    df_2 = get_display_data(low_beta_pos_slope_tickers).sort_values(by='Beta', ascending=True)
     
     # 3. Narrow Price Band (2 weeks) + 200DMA Slope > 5
     narrow_band_tickers = []
@@ -328,11 +489,10 @@ def main():
     # Filter by Slope -> Sort by 3DMA Angle -> Top 10
     slope_filtered = latest_df[latest_df['200DMA_LINE_ANGLE'] > t4_angle]
     divergence_slope_tickers = slope_filtered.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(10)['Ticker'].tolist()
-    df_4 = get_display_data(divergence_slope_tickers)
+    df_4 = get_display_data(divergence_slope_tickers, include_vol_metrics=True).sort_values(by='3DMA Angle', ascending=False)
     
-    # 5. Top 10 by 3DMA Angle (Filtered by Slope)
-    slope_filtered_5 = latest_df[latest_df['200DMA_LINE_ANGLE'] > t5_angle]
-    divergence_tickers = slope_filtered_5.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(t5_top_n)['Ticker'].tolist()
+    # 5. Top 10 by 3DMA Angle (Unfiltered by Slope)
+    divergence_tickers = latest_df.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(t5_top_n)['Ticker'].tolist()
     df_5 = get_display_data(divergence_tickers)
 
     # 6. Actual Bullish Crossovers (20DMA crosses above 200DMA)
@@ -361,16 +521,6 @@ def main():
     potential_crossover_tickers = latest_df[mask_potential]['Ticker'].tolist()
     df_7 = get_display_data(potential_crossover_tickers)
 
-    # 8. Volume Shockers
-    # Volume > Multiplier * 20DMA_Volume AND 200DMA Slope > Angle
-    # Avoid comparison with NaNs
-    mask_volume = (
-        (latest_df['Volume'] > t8_multiplier * latest_df['Volume_20SMA']) &
-        (latest_df['200DMA_LINE_ANGLE'] > t8_angle)
-    )
-    volume_shocker_tickers = latest_df[mask_volume]['Ticker'].tolist()
-    df_8 = get_display_data(volume_shocker_tickers)
-
 
     # --- Display ---
     
@@ -393,11 +543,22 @@ def main():
             st.info("No stocks matched this criteria.")
             return
 
+        if key_prefix == "tab8" and 'Vol Ratio' in data_df.columns:
+             display_data = data_df.style.background_gradient(subset=['Vol Ratio'], cmap='YlOrRd')
+        elif key_prefix == "tab2" and 'Beta' in data_df.columns:
+             display_data = data_df.style.background_gradient(subset=['Beta'], cmap='Blues')
+        elif (key_prefix == "tab4" or key_prefix == "tab5") and '3DMA Angle' in data_df.columns:
+             display_data = data_df.style.background_gradient(subset=['3DMA Angle'], cmap='Purples')
+        else:
+             display_data = data_df.style
+
+        display_data = display_data.format(precision=2)
+
         # Sortable Data Grid with Selection
         # on_select="rerun" makes the app rerun when a row is selected
         # user can click headers to sort
         event = st.dataframe(
-            data_df,
+            display_data,
             on_select="rerun",
             selection_mode="single-row",
             use_container_width=True,
@@ -426,7 +587,7 @@ def main():
             col4.metric("3 DMA Angle", f"{row['3DMA Angle']:.2f}°")
             col5.metric("Beta", f"{row['Beta']:.2f}")
             
-            plot_charts(df, selected_ticker, timeframe_days)
+            plot_charts(df, selected_ticker, timeframe_days, candle_type, show_bollinger, show_volume_profile)
         else:
             st.info("👆 Click a row in the table above to view the chart.")
 
@@ -450,9 +611,6 @@ def main():
 
     with tab7:
         render_tab_content(df_7, f"Potential Bullish Crossover (Gap < {proximity_pct}%) + Slope > {crossover_angle}°", "tab7")
-
-    with tab8:
-        render_tab_content(df_8, f"Volume Shockers (Vol > {t8_multiplier}x 20-Day Avg) + Slope > {t8_angle}°", "tab8")
 
 if __name__ == "__main__":
     main()
