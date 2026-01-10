@@ -292,7 +292,6 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
     fig.add_trace(go.Bar(
         x=stock_df['Date'], y=stock_df['Volume'],
         name='Volume', marker_color=volume_colors
-        name='Volume', marker_color=volume_colors
     ), row=2, col=1)
 
     # 3. RSI Chart
