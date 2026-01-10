@@ -726,7 +726,7 @@ def main():
             (latest_df[cur_col] <= t9_max_angle)
         )
         bottoming_tickers = latest_df[bottoming_mask]['Ticker'].tolist()
-        df_9 = get_display_data(bottoming_tickers).sort_values(by=display_name_bot, ascending=True)
+        df_9 = get_display_data(bottoming_tickers, include_vol_metrics=True).sort_values(by=display_name_bot, ascending=True)
         render_tab_content(df_9, f"{selected_dma_bot}DMA Bottoming: Prev Angle <= {t9_prev_max}° → Current [{t9_min_angle}°, {t9_max_angle}°] (Turning Up)", "tab9")
 
 if __name__ == "__main__":
