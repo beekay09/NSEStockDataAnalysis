@@ -1,0 +1,82 @@
+/* Main Background */
+.stApp {
+    background-color: #0e1117;
+    color: #fafafa;
+}
+
+/* Global Text Visibility Force */
+.stMarkdown, .stText, p, label, .stRadio div, .stCheckbox div {
+    color: #fafafa !important;
+}
+
+/* Sidebar Styling */
+[data-testid="stSidebar"] {
+    background-color: #262730;
+    border-right: 1px solid #464b5d;
+}
+[data-testid="stSidebar"] .stMarkdown, 
+[data-testid="stSidebar"] label, 
+[data-testid="stSidebar"] .stRadio div, 
+[data-testid="stSidebar"] .stCheckbox div {
+    color: #ffffff !important;
+}
+
+/* Inputs in Sidebar */
+[data-testid="stSidebar"] input {
+    background-color: #464b5d !important;
+    color: white !important;
+    border: 1px solid #555 !important;
+}
+
+/* Header Styling */
+header[data-testid="stHeader"] {
+    background-color: #262730;
+    border-bottom: 1px solid #464b5d;
+}
+
+/* Tabs Styling */
+button[data-baseweb="tab"] {
+    background-color: transparent;
+    color: #fafafa;
+    border: 1px solid transparent;
+}
+button[data-baseweb="tab"][aria-selected="true"] {
+     background-color: #464b5d;
+     color: #00e676 !important;
+     border: 1px solid #00e676;
+}
+
+/* Buttons in the grid */
+.stButton > button {
+    width: 100%;
+    border-radius: 5px;
+    background-color: #262730;
+    color: white;
+    border: 1px solid #464b5d;
+}
+.stButton > button:hover {
+    background-color: #464b5d;
+    border-color: #fafafa;
+    color: white;
+}
+/* Metrics Styling */
+[data-testid="stMetricValue"] {
+    color: #00e676; /* Accent color for metric values */
+}
+
+/* Radio Buttons as Tabs/Pills */
+div.row-widget.stRadio > div {
+    flex-direction: row;
+    justify-content: center;
+    background-color: #262730;
+    padding: 10px;
+    border-radius: 10px;
+    overflow-x: auto;
+}
+div.row-widget.stRadio > div[role="radiogroup"] > label {
+    background-color: #0e1117;
+    padding: 5px 15px;
+    border-radius: 15px;
+    margin: 0 5px;
+    border: 1px solid #464b5d;
+}
