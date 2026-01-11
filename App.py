@@ -583,8 +583,12 @@ def main():
         subset = subset.round(2)
         return subset
 
-    def render_tab_content(data_df, description, key_prefix):
+    def render_tab_content(data_df, description, key_prefix, documentation=None):
         st.markdown(f"**{description}**")
+        
+        if documentation:
+            with st.expander("ℹ️ Feature Documentation"):
+                st.markdown(documentation)
         st.markdown(f"Found {len(data_df)} stocks.")
         
         if data_df.empty:
@@ -734,7 +738,18 @@ def main():
             (latest_df['200DMA_SLOPE'] > t1_angle)
         ]['Ticker'].tolist()
         df_1 = get_display_data(low_rsi_pos_slope_tickers).sort_values(by=['RSI', 'RSI Slope'], ascending=[True, True])
-        render_tab_content(df_1, f"RSI < {t1_rsi} and 200 DMA Slope > {t1_angle}°", "tab1")
+        
+        doc_1 = """
+        **Low RSI Strategy**
+        
+        Identifies stocks that are potentially **oversold** (Low RSI) but are still in a **long-term uptrend** (Positive 200 DMA Slope).
+        
+        *   **Goal**: Catch pullbacks in strong stocks.
+        *   **Key Filters**:
+            *   `RSI Threshold`: Stocks with RSI below this value.
+            *   `200 DMA Angle`: Ensures the long-term trend is positive.
+        """
+        render_tab_content(df_1, f"RSI < {t1_rsi} and 200 DMA Slope > {t1_angle}°", "tab1", doc_1)
         
     elif selected_tab == "Low Beta":
         beta_threshold = latest_df['Beta'].quantile(t2_beta_pct)
@@ -743,7 +758,18 @@ def main():
             (latest_df['200DMA_SLOPE'] > t2_angle)
         ]['Ticker'].tolist()
         df_2 = get_display_data(low_beta_pos_slope_tickers).sort_values(by='Beta', ascending=True)
-        render_tab_content(df_2, f"Low Beta (Bottom {int(t2_beta_pct*100)}%) and 200 DMA Slope > {t2_angle}°", "tab2")
+        
+        doc_2 = """
+        **Low Beta Strategy**
+        
+        Finds **low-volatility stocks** (Low Beta) that are in a **steady uptrend**.
+        
+        *   **Goal**: Identify conservative entry points in stable stocks.
+        *   **Key Filters**:
+            *   `Beta Percentile`: Selects the bottom percentage of stocks by Beta.
+            *   `200 DMA Angle`: Ensures the long-term trend is positive.
+        """
+        render_tab_content(df_2, f"Low Beta (Bottom {int(t2_beta_pct*100)}%) and 200 DMA Slope > {t2_angle}°", "tab2", doc_2)
 
     elif selected_tab == "Narrow Band":
         narrow_band_tickers = []
@@ -757,13 +783,35 @@ def main():
             if (max_price - min_price) / min_price < t3_band_pct:
                 narrow_band_tickers.append(ticker)
         df_3 = get_display_data(narrow_band_tickers)
-        render_tab_content(df_3, f"Narrow Price Band ({int(t3_band_pct*100)}% range/{t3_days} days) and 200 DMA Slope > {t3_angle}°", "tab3")
+        
+        doc_3 = """
+        **Narrow Price Band Strategy**
+        
+        Detects stocks that are **consolidating** within a tight price range (volatility contraction) while maintaining a long-term uptrend.
+        
+        *   **Goal**: Anticipate a potential breakout from consolidation.
+        *   **Key Filters**:
+            *   `Price Band %`: Maximum allowed percentage difference between High and Low over the lookback period.
+            *   `Lookback Days`: Number of days the price has stayed in this range.
+        """
+        render_tab_content(df_3, f"Narrow Price Band ({int(t3_band_pct*100)}% range/{t3_days} days) and 200 DMA Slope > {t3_angle}°", "tab3", doc_3)
 
     elif selected_tab == "Divergence Slope":
         slope_filtered = latest_df[latest_df['200DMA_SLOPE'] > t4_angle]
         divergence_slope_tickers = slope_filtered.sort_values(by='3DMA_SLOPE', ascending=False).head(10)['Ticker'].tolist()
         df_4 = get_display_data(divergence_slope_tickers, include_vol_metrics=True).sort_values(by='3DMA Slope', ascending=False)
-        render_tab_content(df_4, f"Top 10 High 3DMA Slope (Divergence) with 200 DMA Slope > {t4_angle}°", "tab4")
+        
+        doc_4 = """
+        **Divergence Slope Strategy**
+        
+        Highlights stocks where the **short-term trend (3DMA Slope)** is very strong compared to peers, indicating strong immediate momentum.
+        
+        *   **Goal**: Identify stocks with explosive short-term momentum supported by a long-term trend.
+        *   **Key Filters**:
+            *   `200 DMA Slope`: Minimum angle for the long-term trend.
+            *   Ranks by `3DMA Slope` descending (Top 10).
+        """
+        render_tab_content(df_4, f"Top 10 High 3DMA Slope (Divergence) with 200 DMA Slope > {t4_angle}°", "tab4", doc_4)
 
     elif selected_tab == "High DMA Angle":
         target_col = f"{selected_dma}DMA_SLOPE"
@@ -771,7 +819,18 @@ def main():
         
         divergence_tickers = latest_df.sort_values(by=target_col, ascending=False).head(t5_top_n)['Ticker'].tolist()
         df_5 = get_display_data(divergence_tickers, include_vol_metrics=True).sort_values(by=display_name, ascending=False)
-        render_tab_content(df_5, f"Top {t5_top_n} Stocks by Highest {display_name} (200DMA Slope > {t5_angle}°)", "tab5")
+        
+        doc_5 = f"""
+        **High DMA Angle Ranking**
+        
+        Ranks stocks purely by the **steepness of their trend** for the selected Annual/DMA timeframe.
+        
+        *   **Goal**: Find the strongest trending stocks right now.
+        *   **Key Filters**:
+            *   `Select DMA`: Choose between Short (3), Medium (20), or Long (200) term trends.
+            *   `Top N`: Number of top stocks to display.
+        """
+        render_tab_content(df_5, f"Top {t5_top_n} Stocks by Highest {display_name} (200DMA Slope > {t5_angle}°)", "tab5", doc_5)
 
     elif selected_tab == "Slope Difference":
         latest_df['SlopeDiff'] = latest_df['20DMA_SLOPE'] - latest_df['200DMA_SLOPE']
@@ -788,7 +847,17 @@ def main():
         # Recalculate for the subset to be safe/easy
         df_diff['Slope Diff'] = df_diff['20DMA Slope'] - df_diff['200DMA Slope']
         
-        render_tab_content(df_diff, f"Top {t6_top_n} Stocks by (20DMA Slope - 200DMA Slope) >= {t6_min_diff}", "tab_slope_diff")
+        doc_6 = """
+        **Slope Difference Strategy**
+        
+        Focuses on the **spread** between the Short-Term (20DMA) Slope and the Long-Term (200DMA) Slope.
+        
+        *   **Goal**: Identify meaningful acceleration where the short-term trend is significantly outpacing the long-term trend.
+        *   **Key Filters**:
+            *   `Min Slope Difference`: Minimum spread required (20DMA Slope - 200DMA Slope).
+            *   `200 DMA Slope`: Ensures the base trend is positive.
+        """
+        render_tab_content(df_diff, f"Top {t6_top_n} Stocks by (20DMA Slope - 200DMA Slope) >= {t6_min_diff}", "tab_slope_diff", doc_6)
 
     elif selected_tab == "Actual Crossover":
         actual_crossover_tickers = latest_df[
@@ -797,7 +866,18 @@ def main():
             (latest_df['200DMA_SLOPE'] > crossover_angle)
         ]['Ticker'].tolist()
         df_6 = get_display_data(actual_crossover_tickers)
-        render_tab_content(df_6, f"Actual Bullish Crossover (20DMA crosses 200DMA) + Slope > {crossover_angle}°", "tab6")
+        
+        doc_7 = """
+        **Actual Crossover (Golden Cross)**
+        
+        Identifies stocks where the **20 DMA crossed ABOVE the 200 DMA** today.
+        
+        *   **Goal**: Catch the start of a potential major uptrend signal.
+        *   **Key Filters**:
+            *   `200 DMA Slope`: Ensures the long-term trend is not downward.
+            *   Logic: Today 20DMA > 200 DMA AND Yesterday 20DMA <= 200DMA.
+        """
+        render_tab_content(df_6, f"Actual Bullish Crossover (20DMA crosses 200DMA) + Slope > {crossover_angle}°", "tab6", doc_7)
 
     elif selected_tab == "Potential Crossover":
         mask_potential = (
@@ -809,7 +889,18 @@ def main():
         )
         potential_crossover_tickers = latest_df[mask_potential]['Ticker'].tolist()
         df_7 = get_display_data(potential_crossover_tickers)
-        render_tab_content(df_7, f"Potential Bullish Crossover (Gap < {proximity_pct}%) + Slope > {crossover_angle}°", "tab7")
+        
+        doc_8 = """
+        **Potential Crossover / Kissing Distance**
+        
+        Finds stocks where the 20 DMA is **approaching** the 200 DMA from below and is very close.
+        
+        *   **Goal**: Anticipate a crossover before it happens.
+        *   **Key Filters**:
+            *   `Proximity %`: How close the 20DMA is to the 200DMA (in %).
+            *   `200 DMA Slope`: Ensures positive long-term background.
+        """
+        render_tab_content(df_7, f"Potential Bullish Crossover (Gap < {proximity_pct}%) + Slope > {crossover_angle}°", "tab7", doc_8)
 
     elif selected_tab == "Volume Shockers":
         shockers_mask = (
@@ -819,7 +910,18 @@ def main():
         )
         volume_shockers_tickers = latest_df[shockers_mask]['Ticker'].tolist()
         df_8 = get_display_data(volume_shockers_tickers, include_vol_metrics=True).sort_values(by='Vol Ratio', ascending=False)
-        render_tab_content(df_8, f"Volume > {vol_shock_threshold}x Avg AND Avg Vol > {min_volume} AND Slope > {t8_angle}°", "tab8")
+        
+        doc_9 = """
+        **Volume Shockers**
+        
+        Identifies stocks with **unusual volume spikes** compared to their **20-day average**.
+        
+        *   **Goal**: Detect institutional interest, breakouts, or news-driven moves.
+        *   **Key Filters**:
+            *   `Volume Ratio`: Current Volume / 20-Day Average Volume.
+            *   `Min Avg Volume`: Filter out illiquid stocks.
+        """
+        render_tab_content(df_8, f"Volume > {vol_shock_threshold}x Avg AND Avg Vol > {min_volume} AND Slope > {t8_angle}°", "tab8", doc_9)
 
     elif selected_tab == "DMA Bottoming":
         cur_col = f"{selected_dma_bot}DMA_SLOPE"
@@ -834,7 +936,18 @@ def main():
         )
         bottoming_tickers = latest_df[bottoming_mask]['Ticker'].tolist()
         df_9 = get_display_data(bottoming_tickers, include_vol_metrics=True).sort_values(by=display_name_bot, ascending=True)
-        render_tab_content(df_9, f"{selected_dma_bot}DMA Bottoming: Prev Angle <= {t9_prev_max}° → Current [{t9_min_angle}°, {t9_max_angle}°] (Turning Up)", "tab9")
+        
+        doc_10 = f"""
+        **DMA Bottoming / Turning Up**
+        
+        Identifies stocks where the slope of the **{selected_dma_bot} DMA** is **curving upwards**.
+        
+        *   **Goal**: Spot trend reversals (end of downtrend or correction) early.
+        *   **Key Filters**:
+            *   Previously negative or flat slope -> Now positive or less negative slope.
+            *   Min/Max Angle constraints.
+        """
+        render_tab_content(df_9, f"{selected_dma_bot}DMA Bottoming: Prev Angle <= {t9_prev_max}° → Current [{t9_min_angle}°, {t9_max_angle}°] (Turning Up)", "tab9", doc_10)
 
 if __name__ == "__main__":
     main()
