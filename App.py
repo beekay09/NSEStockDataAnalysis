@@ -94,7 +94,6 @@ def load_data():
         st.error(f"File {DATA_FILE} not found. Please run the data fetcher first.")
         return pd.DataFrame()
 
-@st.cache_data
 def load_documentation():
     """Load documentation from JSON file."""
     try:
@@ -131,7 +130,7 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
 
     # Calculate MACD if requested
     if show_macd:
-        macd_data = al.calculate_macd(stock_df)
+        macd_data = mt.calculate_macd(stock_df)
 
     # Determine Row Layout
     # Row 1: Price
@@ -400,8 +399,8 @@ def main():
     show_volume_profile = st.sidebar.checkbox("Show Volume Profile", value=False)
     
     st.sidebar.markdown("---")
-    show_slope = st.sidebar.checkbox("Show Slope History", value=True)
-    show_macd = st.sidebar.checkbox("Show MACD", value=False)
+    show_slope = st.sidebar.checkbox("Show Slope History", value=False)
+    show_macd = st.sidebar.checkbox("Show MACD", value=True)
 
     # --- Top Navigation ---
     tab_options = [
@@ -489,6 +488,7 @@ def main():
     elif selected_tab == "MACD Crossover":
         st.sidebar.subheader("MACD Crossover Settings")
         crossover_angle = st.sidebar.number_input("200 DMA Angle >", value=5, key="macd_angle")
+        macd_lookback = st.sidebar.slider("Lookback Days (Signal)", 1, 10, 3, key="macd_lookback")
 
     # --- Filter Logic and Display ---
     
@@ -734,9 +734,9 @@ def main():
         render_tab_content(df_9, f"{selected_dma_bot}DMA Bottoming: Prev Angle <= {t9_prev_max}° → Current [{t9_min_angle}°, {t9_max_angle}°] (Turning Up)", "tab9", doc_10)
 
     elif selected_tab == "MACD Crossover":
-        tickers, doc_key = al.get_macd_crossover_tickers(latest_df, df, crossover_angle)
+        tickers, doc_key = al.get_macd_crossover_tickers(latest_df, df, crossover_angle, macd_lookback)
         df_10 = get_display_data(tickers)
-        render_tab_content(df_10, f"MACD Crossed Above Signal Line (Last 3 Days) (+200DMA Slope > {crossover_angle}°)", "tab10", docs.get(doc_key))
+        render_tab_content(df_10, f"MACD Crossed Above Signal Line (Last {macd_lookback} Days) (+200DMA Slope > {crossover_angle}°)", "tab10", docs.get(doc_key))
 
 if __name__ == "__main__":
     main()

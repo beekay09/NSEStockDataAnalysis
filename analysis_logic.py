@@ -81,7 +81,7 @@ def get_dma_bottoming_tickers(latest_df, dma, min_angle, max_angle, prev_max_ang
     return latest_df[bottoming_mask]['Ticker'].tolist(), "DMA Bottoming"
 
 
-def get_macd_crossover_tickers(latest_df, df, min_angle):
+def get_macd_crossover_tickers(latest_df, df, min_angle, lookback_days=3):
     # 1. Identify candidates (Positive 200DMA background)
     candidates = latest_df[latest_df['200DMA_SLOPE'] > min_angle]['Ticker'].tolist()
     
@@ -101,16 +101,14 @@ def get_macd_crossover_tickers(latest_df, df, min_angle):
         # Today: MACD > Signal
         # Yesterday: MACD <= Signal
         
-        if len(macd_data) < 5:
+        if len(macd_data) < (lookback_days + 2):
             continue
             
-        # Check for crossover in the last 3 days
-        # We check indices -1 (Today), -2 (Yesterday), -3 (Day before)
-        # A crossover event at 'i' means MACD[i] > Signal[i] AND MACD[i-1] <= Signal[i-1]
+        # Check for crossover in the last N days
+        # We need enough recent data: lookback + 1 (for previous day compare)
+        recent = macd_data.tail(lookback_days + 1)
         
         crossover_found = False
-        # We need the last 4 records to check 3 possible crossover events
-        recent = macd_data.tail(4)
         
         for i in range(1, len(recent)):
             curr = recent.iloc[i]
