@@ -451,6 +451,7 @@ def main():
         "Low Beta", 
         "Narrow Band", 
         "Divergence Slope",
+        "Slope Difference",
         "High DMA Angle",
         "Actual Crossover",
         "Potential Crossover",
@@ -521,6 +522,12 @@ def main():
         selected_dma = st.sidebar.selectbox("Select DMA", [3, 20, 200], index=0)
         t5_top_n = st.sidebar.number_input("Top N Stocks", value=10, min_value=5, max_value=50, key="t5_top_n")
         t5_angle = st.sidebar.number_input("200 DMA Slope >", value=5, key="t5_angle")
+
+    elif selected_tab == "Slope Difference":
+        st.sidebar.subheader("Slope Difference Settings")
+        t6_top_n = st.sidebar.number_input("Top N Stocks", value=20, min_value=5, max_value=50, key="t6_top_n")
+        t6_min_diff = st.sidebar.number_input("Min Slope Difference", value=0.0, step=0.5, key="t6_min_diff")
+        t6_min_200_slope = st.sidebar.number_input("200 DMA Slope >", value=0.0, step=0.5, key="t6_min_200_slope")
         
     elif selected_tab == "Actual Crossover" or selected_tab == "Potential Crossover":
         st.sidebar.subheader("Crossover Settings")
@@ -765,6 +772,23 @@ def main():
         divergence_tickers = latest_df.sort_values(by=target_col, ascending=False).head(t5_top_n)['Ticker'].tolist()
         df_5 = get_display_data(divergence_tickers, include_vol_metrics=True).sort_values(by=display_name, ascending=False)
         render_tab_content(df_5, f"Top {t5_top_n} Stocks by Highest {display_name} (200DMA Slope > {t5_angle}°)", "tab5")
+
+    elif selected_tab == "Slope Difference":
+        latest_df['SlopeDiff'] = latest_df['20DMA_SLOPE'] - latest_df['200DMA_SLOPE']
+        
+        mask = (latest_df['SlopeDiff'] >= t6_min_diff) & (latest_df['200DMA_SLOPE'] > t6_min_200_slope)
+            
+        slope_diff_tickers = latest_df[mask].sort_values(by='SlopeDiff', ascending=False).head(t6_top_n)['Ticker'].tolist()
+        df_diff = get_display_data(slope_diff_tickers)
+        # We need to add the SlopeDiff column to the display dataframe for clarity, 
+        # but get_display_data filters columns. 
+        # Let's just rely on the user seeing 20DMA Slope and 200DMA Slope and doing the math, 
+        # OR we can add it to the dataframe afterwards.
+        # Let's add it afterwards.
+        # Recalculate for the subset to be safe/easy
+        df_diff['Slope Diff'] = df_diff['20DMA Slope'] - df_diff['200DMA Slope']
+        
+        render_tab_content(df_diff, f"Top {t6_top_n} Stocks by (20DMA Slope - 200DMA Slope) >= {t6_min_diff}", "tab_slope_diff")
 
     elif selected_tab == "Actual Crossover":
         actual_crossover_tickers = latest_df[
