@@ -89,10 +89,15 @@ def load_data():
         # Ensure we have the necessary angle columns if they aren't explicitly loaded (though csv should have them)
         # Based on add_metrics.py: 200DMA_LINE_ANGLE, RSI_14_angle
         
-        return df
+        # Load Benchmark Data
+        benchmark_df = df[df['Ticker'] == 'SBINEQWETF.NS'].copy()
+        if benchmark_df.empty and 'SBINEQWETF' in df['Ticker'].unique():
+             benchmark_df = df[df['Ticker'] == 'SBINEQWETF'].copy()
+        
+        return df, benchmark_df
     except FileNotFoundError:
         st.error(f"File {DATA_FILE} not found. Please run the data fetcher first.")
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
 def load_documentation():
     """Load documentation from JSON file."""
@@ -106,7 +111,7 @@ def load_documentation():
 # --- 3. Calculation Functions ---
 # Moved to metrics.py
     
-def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=True, show_volume_profile=False, show_slope=False, show_macd=False):
+def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=True, show_volume_profile=False, show_slope=False, show_macd=False, show_supertrend=False, show_rs=False, benchmark_df=None):
     """Render interactive Plotly charts for a specific ticker."""
     stock_df = df[df['Ticker'] == ticker].copy()
     stock_df = stock_df.sort_values('Date')
@@ -132,12 +137,17 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
     if show_macd:
         macd_data = mt.calculate_macd(stock_df)
 
+    # Calculate Supertrend if requested
+    if show_supertrend:
+        st_data = mt.calculate_supertrend(stock_df)
+
     # Determine Row Layout
     # Row 1: Price
     # Row 2: Volume
     # Row 3: RSI
     # Row 4: Slope History (Optional)
     # Row 5: MACD (Optional)
+    # Row 6: RS (Optional)
     
     rows = 3
     # Adjusted heights: Main (0.6), Volume (0.1), RSI (0.15)
@@ -146,6 +156,7 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
     
     slope_row = None
     macd_row = None
+    rs_row = None
     
     if show_slope:
         rows += 1
@@ -156,6 +167,12 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
     if show_macd:
         rows += 1
         macd_row = rows
+        row_heights.append(0.15)
+        specs.append([{"secondary_y": False}])
+        
+    if show_rs:
+        rows += 1
+        rs_row = rows
         row_heights.append(0.15)
         specs.append([{"secondary_y": False}])
 
@@ -256,6 +273,22 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
         fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
         fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
 
+    # Add Supertrend if requested
+    if show_supertrend:
+        # Plot Supertrend Overlay on Row 1
+        fig.add_trace(go.Scatter(
+            x=st_data['Date'], y=st_data['Supertrend'],
+            # Conditional color is hard in one trace, using green for now as mostly looking for buy
+            # Or split into two traces Up/Down?
+            # Let's just use purple/distinct color or make it dynamic if possible.
+            # Plotly line object doesn't support array color easily.
+            # Using simple indicators: Green/Red markers could work.
+            line=dict(color='rgba(128, 0, 128, 0.7)', width=2, dash='dashdot'), 
+            name='Supertrend'
+        ), row=1, col=1)
+
+
+
     # 4. Slope History Chart
     if show_slope and slope_row:
         if '200DMA_SLOPE' in stock_df.columns:
@@ -349,6 +382,21 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
         fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.1)', row=macd_row, col=1)
         fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.1)', title="MACD", row=macd_row, col=1)
 
+    # 6. Relative Strength Chart
+    if show_rs and rs_row and benchmark_df is not None and not benchmark_df.empty:
+        rs_data = mt.calculate_relative_strength(stock_df, benchmark_df)
+        fig.add_trace(go.Scatter(
+            x=rs_data['Date'], y=rs_data['RS_Ratio'],
+            line=dict(color='orange', width=2), name='RS Ratio'
+        ), row=rs_row, col=1)
+        
+        # Add MA for RS
+        fig.add_trace(go.Scatter(
+            x=rs_data['Date'], y=rs_data['RS_MA'],
+            line=dict(color='gray', width=1, dash='dot'), name='RS MA(50)'
+        ), row=rs_row, col=1)
+        fig.update_yaxes(title="RS Ratio", row=rs_row, col=1)
+
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -359,7 +407,7 @@ def main():
     check_and_update_data()
     
     with st.spinner("Loading data..."):
-        df = load_data()
+        df, benchmark_df = load_data()
         docs = load_documentation()
         
     if df.empty:
@@ -402,6 +450,8 @@ def main():
     st.sidebar.markdown("---")
     show_slope = st.sidebar.checkbox("Show Slope History", value=False)
     show_macd = st.sidebar.checkbox("Show MACD", value=True)
+    show_supertrend = st.sidebar.checkbox("Show Supertrend", value=True)
+    show_rs = st.sidebar.checkbox("Show RS (vs Nifty ETF)", value=False)
 
     # --- Top Navigation ---
     tab_options = [
@@ -415,7 +465,9 @@ def main():
         "Potential Crossover",
         "Volume Shockers",
         "DMA Bottoming",
-        "MACD Crossover"
+        "MACD Crossover",
+        "Relative Strength",
+        "Supertrend Buy"
     ]
     
     selected_tab = st.radio("Select Analysis Mode", tab_options, horizontal=True, label_visibility="collapsed")
@@ -490,6 +542,15 @@ def main():
         st.sidebar.subheader("MACD Crossover Settings")
         crossover_angle = st.sidebar.number_input("200 DMA Angle >", value=5, key="macd_angle")
         macd_lookback = st.sidebar.slider("Lookback Days (Signal)", 1, 10, 3, key="macd_lookback")
+
+    elif selected_tab == "Relative Strength":
+        st.sidebar.subheader("RS Settings")
+        rs_slope_min = st.sidebar.number_input("Min RS Slope >", value=0, key="rs_slope")
+        
+    elif selected_tab == "Supertrend Buy":
+        st.sidebar.subheader("Supertrend Settings")
+        st_period = st.sidebar.number_input("Period", value=10, key="st_period")
+        st_multiplier = st.sidebar.number_input("Multiplier", value=3, key="st_multiplier")
 
     # --- Filter Logic and Display ---
     
@@ -670,7 +731,7 @@ def main():
             col4.metric("3 DMA Slope", f"{selected_row['3DMA Slope']:.2f}°")
             col5.metric("Beta", f"{selected_row['Beta']:.2f}")
             
-            plot_charts(df, selected_ticker, timeframe_days, candle_type, show_bollinger, show_volume_profile, show_slope, show_macd)
+            plot_charts(df, selected_ticker, timeframe_days, candle_type, show_bollinger, show_volume_profile, show_slope, show_macd, show_supertrend, show_rs, benchmark_df)
         else:
             st.info("👆 Select a row (checkmark) to view the chart.")
 
@@ -738,6 +799,16 @@ def main():
         tickers, doc_key = al.get_macd_crossover_tickers(latest_df, df, crossover_angle, macd_lookback)
         df_10 = get_display_data(tickers)
         render_tab_content(df_10, f"MACD Crossed Above Signal Line (Last {macd_lookback} Days) (+200DMA Slope > {crossover_angle}°)", "tab10", docs.get(doc_key))
+
+    elif selected_tab == "Relative Strength":
+        tickers, doc_key = al.get_rs_strong_tickers(latest_df, df, benchmark_df, rs_slope_min)
+        df_11 = get_display_data(tickers)
+        render_tab_content(df_11, f"Relative Strength > Benchmark (Slope > {rs_slope_min}°)", "tab11", docs.get(doc_key))
+        
+    elif selected_tab == "Supertrend Buy":
+        tickers, doc_key = al.get_supertrend_buy_tickers(latest_df, df, st_multiplier, st_period)
+        df_12 = get_display_data(tickers)
+        render_tab_content(df_12, f"Supertrend BUY Signal (Last 3 Days)", "tab12", docs.get(doc_key))
 
 if __name__ == "__main__":
     main()

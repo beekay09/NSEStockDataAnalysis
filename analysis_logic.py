@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import metrics as mt
 
 def get_low_rsi_tickers(latest_df, rsi_threshold, min_angle):
@@ -122,3 +123,76 @@ def get_macd_crossover_tickers(latest_df, df, min_angle, lookback_days=3):
             crossover_tickers.append(ticker)
             
     return crossover_tickers, "MACD Crossover"
+
+def get_rs_strong_tickers(latest_df, df, benchmark_df, min_rs_slope=0):
+    """
+    Identify stocks showing relative strength vs Benchmark.
+    Criteria:
+    1. RS Line is uptrending (Slope > 0)
+    2. RS Ratio > Moving Average (optional, simpler to just check slope)
+    """
+    strong_rs_tickers = []
+    
+    # Pre-calculate Benchmark once? No, passed as arg.
+    
+    for ticker in latest_df['Ticker'].tolist():
+        stock_data = df[df['Ticker'] == ticker].sort_values('Date')
+        
+        # Need sufficient overlap
+        if len(stock_data) < 50:
+            continue
+            
+        rs_data = mt.calculate_relative_strength(stock_data, benchmark_df)
+        
+        # Check if empty (no overlapping dates)
+        if rs_data.empty or len(rs_data) < 20:
+            continue
+            
+        # Check current slope
+        current_slope = rs_data.iloc[-1]['RS_Slope']
+        
+        # Check if RS is above its MA (Strength confirmation)
+        current_rs = rs_data.iloc[-1]['RS_Ratio']
+        current_ma = rs_data.iloc[-1]['RS_MA']
+        
+        if current_slope > min_rs_slope and current_rs > current_ma:
+            strong_rs_tickers.append(ticker)
+            
+    return strong_rs_tickers, "Relative Strength"
+
+def get_supertrend_buy_tickers(latest_df, df, multiplier=3, period=10):
+    """
+    Identify stocks that have just generated a Supertrend BUY signal.
+    Criteria:
+    1. Close crossed ABOVE Supertrend line recently (last 3 days).
+    2. Current trend is UP.
+    """
+    buy_tickers = []
+    
+    for ticker in latest_df['Ticker'].tolist():
+        stock_data = df[df['Ticker'] == ticker].sort_values('Date').tail(100)
+        
+        if len(stock_data) < period + 5:
+            continue
+            
+        st_data = mt.calculate_supertrend(stock_data, period, multiplier)
+        
+        # Check for crossover in last 3 days
+        recent = st_data.tail(4)
+        crossover = False
+        
+        # Crossover: Close > Supertrend AND Prev Close <= Prev Supertrend
+        # OR: Direction changed from -1 to 1
+        
+        for i in range(1, len(recent)):
+            curr = recent.iloc[i]
+            prev = recent.iloc[i-1]
+            
+            if (curr['Direction'] == 1) and (prev['Direction'] == -1):
+                crossover = True
+                break
+                
+        if crossover:
+            buy_tickers.append(ticker)
+            
+    return buy_tickers, "Supertrend Buy"
