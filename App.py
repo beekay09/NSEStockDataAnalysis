@@ -140,7 +140,8 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
     # Row 5: MACD (Optional)
     
     rows = 3
-    row_heights = [0.5, 0.15, 0.15]
+    # Adjusted heights: Main (0.6), Volume (0.1), RSI (0.15)
+    row_heights = [0.6, 0.10, 0.15]
     specs = [[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": False}]]
     
     slope_row = None
@@ -168,7 +169,7 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
         rows=rows, cols=1, 
         shared_xaxes=True, 
         vertical_spacing=0.03, 
-        # row_heights=row_heights, # Simpler to let plotly auto-size or just use fixed height
+        row_heights=row_heights, 
         specs=specs
     )
 
