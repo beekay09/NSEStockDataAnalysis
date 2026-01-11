@@ -1,10 +1,9 @@
 pandas
-yfinance
 numpy
+yfinance
 streamlit
 plotly
+streamlit-aggrid
 matplotlib
 nbformat
 ipykernel
-
-streamlit-aggrid
