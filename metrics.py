@@ -138,69 +138,46 @@ def calculate_supertrend(df, period=10, multiplier=3):
     
     # Calculate ATR
     st_df['ATR'] = st_df['TR'].ewm(alpha=1/period, min_periods=period).mean()
+def calculate_adx(df, period=14):
+    """
+    Calculate Average Directional Index (ADX) and DI+/DI-.
+    """
+    adx_df = df.copy()
     
-    # Basic Bands
-    st_df['Basic_Upper'] = (st_df['High'] + st_df['Low']) / 2 + (multiplier * st_df['ATR'])
-    st_df['Basic_Lower'] = (st_df['High'] + st_df['Low']) / 2 - (multiplier * st_df['ATR'])
+    # True Range
+    adx_df['H-L'] = adx_df['High'] - adx_df['Low']
+    adx_df['H-PC'] = abs(adx_df['High'] - adx_df['Close'].shift(1))
+    adx_df['L-PC'] = abs(adx_df['Low'] - adx_df['Close'].shift(1))
+    adx_df['TR'] = adx_df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
     
-    # Final Bands
-    st_df['Final_Upper'] = st_df['Basic_Upper']
-    st_df['Final_Lower'] = st_df['Basic_Lower']
-    st_df['Supertrend'] = np.nan
-    st_df['Direction'] = 1 # 1: Uptrend, -1: Downtrend
+    # Directional Movement
+    adx_df['UpMove'] = adx_df['High'] - adx_df['High'].shift(1)
+    adx_df['DownMove'] = adx_df['Low'].shift(1) - adx_df['Low']
     
-    # Iterative calculation for Supertrend logic
-    # We need to iterate because current value depends on previous trend
+    adx_df['+DM'] = np.where((adx_df['UpMove'] > adx_df['DownMove']) & (adx_df['UpMove'] > 0), adx_df['UpMove'], 0)
+    adx_df['-DM'] = np.where((adx_df['DownMove'] > adx_df['UpMove']) & (adx_df['DownMove'] > 0), adx_df['DownMove'], 0)
     
-    # Convert to numpy arrays for speed
-    close = st_df['Close'].values
-    basic_upper = st_df['Basic_Upper'].values
-    basic_lower = st_df['Basic_Lower'].values
+    # Wilder's Smoothing (Alpha = 1/n)
+    # The first value is usually an SMA, subsequent are EMA-like: prev + 1/n * (curr - prev) 
+    # Pandas ewm(alpha=1/period, adjust=False) is equivalent to Wilder's if initialized correctly.
+    # Standard technical analysis libraries often use adjust=False.
     
-    final_upper = np.zeros(len(st_df))
-    final_lower = np.zeros(len(st_df))
-    supertrend = np.full(len(st_df), np.nan)
-    direction = np.zeros(len(st_df))
+    alpha = 1 / period
     
-    # Initialize first valid index
-    # (Assuming first few are NaN due to ATR)
+    # Calculate Smoothed components
+    # We need a sufficient starting window to avoid convergence issues, but ewm handles it reasonably.
+    adx_df['TR_Smooth'] = adx_df['TR'].ewm(alpha=alpha, adjust=False).mean()
+    adx_df['+DM_Smooth'] = adx_df['+DM'].ewm(alpha=alpha, adjust=False).mean()
+    adx_df['-DM_Smooth'] = adx_df['-DM'].ewm(alpha=alpha, adjust=False).mean()
     
-    for i in range(period, len(st_df)):
-        # Final Upper
-        if basic_upper[i] < final_upper[i-1] or close[i-1] > final_upper[i-1]:
-            final_upper[i] = basic_upper[i]
-        else:
-            final_upper[i] = final_upper[i-1]
-            
-        # Final Lower
-        if basic_lower[i] > final_lower[i-1] or close[i-1] < final_lower[i-1]:
-            final_lower[i] = basic_lower[i]
-        else:
-            final_lower[i] = final_lower[i-1]
-            
-        # Trend Direction
-        # Assuming initial direction based on first calc
-        if i == period:
-            direction[i] = 1 if close[i] > final_upper[i] else -1
-            supertrend[i] = final_lower[i] if direction[i] == 1 else final_upper[i]
-        else:
-            prev_dir = direction[i-1]
-            if prev_dir == 1:
-                if close[i] < final_lower[i]:
-                    direction[i] = -1
-                    supertrend[i] = final_upper[i]
-                else:
-                    direction[i] = 1
-                    supertrend[i] = final_lower[i]
-            else: # prev_dir == -1
-                if close[i] > final_upper[i]:
-                    direction[i] = 1
-                    supertrend[i] = final_lower[i]
-                else:
-                    direction[i] = -1
-                    supertrend[i] = final_upper[i]
-                    
-    st_df['Supertrend'] = supertrend
-    st_df['Direction'] = direction
+    # Directional Indicators
+    adx_df['+DI'] = 100 * (adx_df['+DM_Smooth'] / adx_df['TR_Smooth'])
+    adx_df['-DI'] = 100 * (adx_df['-DM_Smooth'] / adx_df['TR_Smooth'])
     
-    return st_df
+    # DX
+    adx_df['DX'] = 100 * abs(adx_df['+DI'] - adx_df['-DI']) / (adx_df['+DI'] + adx_df['-DI'])
+    
+    # ADX (Smoothed DX)
+    adx_df['ADX'] = adx_df['DX'].ewm(alpha=alpha, adjust=False).mean()
+    
+    return adx_df[['Date', 'ADX', '+DI', '-DI']]

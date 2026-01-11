@@ -26,11 +26,11 @@ DOCS_FILE = "app_documentation.json"
 FRESHNESS_HOURS = 20
 CSS_FILE = "style.css"
 
-def load_css():
-    with open(CSS_FILE) as f:
-        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-    
-load_css()
+def load_css(is_dark_mode=True):
+    if is_dark_mode:
+        with open(CSS_FILE) as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+
 
 
 
@@ -111,7 +111,7 @@ def load_documentation():
 # --- 3. Calculation Functions ---
 # Moved to metrics.py
     
-def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=True, show_volume_profile=False, show_slope=False, show_macd=False, show_supertrend=False, show_rs=False, benchmark_df=None):
+def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=True, show_volume_profile=False, show_slope=False, show_macd=False, show_adx=False, show_rs=False, benchmark_df=None, is_dark_mode=True):
     """Render interactive Plotly charts for a specific ticker."""
     stock_df = df[df['Ticker'] == ticker].copy()
     stock_df = stock_df.sort_values('Date')
@@ -137,9 +137,9 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
     if show_macd:
         macd_data = mt.calculate_macd(stock_df)
 
-    # Calculate Supertrend if requested
-    if show_supertrend:
-        st_data = mt.calculate_supertrend(stock_df)
+    # Calculate ADX if requested
+    if show_adx:
+        adx_data = mt.calculate_adx(stock_df)
 
     # Determine Row Layout
     # Row 1: Price
@@ -148,6 +148,7 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
     # Row 4: Slope History (Optional)
     # Row 5: MACD (Optional)
     # Row 6: RS (Optional)
+    # Row 7: ADX (Optional)
     
     rows = 3
     # Adjusted heights: Main (0.6), Volume (0.1), RSI (0.15)
@@ -157,6 +158,7 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
     slope_row = None
     macd_row = None
     rs_row = None
+    adx_row = None
     
     if show_slope:
         rows += 1
@@ -173,6 +175,12 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
     if show_rs:
         rows += 1
         rs_row = rows
+        row_heights.append(0.15)
+        specs.append([{"secondary_y": False}])
+
+    if show_adx:
+        rows += 1
+        adx_row = rows
         row_heights.append(0.15)
         specs.append([{"secondary_y": False}])
 
@@ -273,19 +281,8 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
         fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
         fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
 
-    # Add Supertrend if requested
-    if show_supertrend:
-        # Plot Supertrend Overlay on Row 1
-        fig.add_trace(go.Scatter(
-            x=st_data['Date'], y=st_data['Supertrend'],
-            # Conditional color is hard in one trace, using green for now as mostly looking for buy
-            # Or split into two traces Up/Down?
-            # Let's just use purple/distinct color or make it dynamic if possible.
-            # Plotly line object doesn't support array color easily.
-            # Using simple indicators: Green/Red markers could work.
-            line=dict(color='rgba(128, 0, 128, 0.7)', width=2, dash='dashdot'), 
-            name='Supertrend'
-        ), row=1, col=1)
+    # Remove Supertrend plotting code
+
 
 
 
@@ -331,10 +328,10 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
         xaxis_rangeslider_visible=False,
         height=total_height,
         showlegend=True,
-        template="plotly_dark",
-        plot_bgcolor='#0e1117',
-        paper_bgcolor='#0e1117',
-        font=dict(color='#fafafa')
+        template="plotly_dark" if is_dark_mode else "plotly_white",
+        plot_bgcolor='#0e1117' if is_dark_mode else '#ffffff',
+        paper_bgcolor='#0e1117' if is_dark_mode else '#ffffff',
+        font=dict(color='#fafafa' if is_dark_mode else '#000000')
     )
     
     if show_volume_profile:
@@ -397,6 +394,32 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
         ), row=rs_row, col=1)
         fig.update_yaxes(title="RS Ratio", row=rs_row, col=1)
 
+    # 7. ADX Chart
+    if show_adx and adx_row:
+        # ADX Line (White/Black based on theme?) - Using distinct color like Gold or White
+        adx_color = 'white' if is_dark_mode else 'black'
+        
+        fig.add_trace(go.Scatter(
+            x=adx_data['Date'], y=adx_data['ADX'],
+            line=dict(color=adx_color, width=2), name='ADX'
+        ), row=adx_row, col=1)
+        
+        # +DI (Green)
+        fig.add_trace(go.Scatter(
+            x=adx_data['Date'], y=adx_data['+DI'],
+            line=dict(color='#00e676', width=1), name='+DI'
+        ), row=adx_row, col=1)
+        
+        # -DI (Red)
+        fig.add_trace(go.Scatter(
+            x=adx_data['Date'], y=adx_data['-DI'],
+            line=dict(color='#ff1744', width=1), name='-DI'
+        ), row=adx_row, col=1)
+        
+        # Threshold Reference Line (25)
+        fig.add_hline(y=25, line_dash="dash", line_color="gray", row=adx_row, col=1)
+        fig.update_yaxes(title="ADX", row=adx_row, col=1)
+
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -439,6 +462,11 @@ def main():
     
     # --- Sidebar Controls ---
     st.sidebar.header("Chart Settings")
+    
+    # Theme Toggle
+    is_dark_mode = st.sidebar.checkbox("Dark Mode", value=True)
+    load_css(is_dark_mode)
+
     timeframe_options = {"3 Months": 90, "6 Months": 180, "1 Year": 365, "2 Years": 730, "Max": 5000}
     selected_timeframe = st.sidebar.selectbox("Timeframe", list(timeframe_options.keys()), index=1)
     timeframe_days = timeframe_options[selected_timeframe]
@@ -450,7 +478,7 @@ def main():
     st.sidebar.markdown("---")
     show_slope = st.sidebar.checkbox("Show Slope History", value=False)
     show_macd = st.sidebar.checkbox("Show MACD", value=True)
-    show_supertrend = st.sidebar.checkbox("Show Supertrend", value=True)
+    show_adx = st.sidebar.checkbox("Show ADX", value=True)
     show_rs = st.sidebar.checkbox("Show RS (vs Nifty ETF)", value=False)
 
     # --- Top Navigation ---
@@ -467,7 +495,7 @@ def main():
         "DMA Bottoming",
         "MACD Crossover",
         "Relative Strength",
-        "Supertrend Buy"
+        "Strong ADX"
     ]
     
     selected_tab = st.radio("Select Analysis Mode", tab_options, horizontal=True, label_visibility="collapsed")
@@ -547,10 +575,9 @@ def main():
         st.sidebar.subheader("RS Settings")
         rs_slope_min = st.sidebar.number_input("Min RS Slope >", value=0, key="rs_slope")
         
-    elif selected_tab == "Supertrend Buy":
-        st.sidebar.subheader("Supertrend Settings")
-        st_period = st.sidebar.number_input("Period", value=10, key="st_period")
-        st_multiplier = st.sidebar.number_input("Multiplier", value=3, key="st_multiplier")
+    elif selected_tab == "Strong ADX":
+        st.sidebar.subheader("ADX Settings")
+        adx_threshold = st.sidebar.number_input("Min ADX", value=25, key="adx_threshold")
 
     # --- Filter Logic and Display ---
     
@@ -731,7 +758,7 @@ def main():
             col4.metric("3 DMA Slope", f"{selected_row['3DMA Slope']:.2f}°")
             col5.metric("Beta", f"{selected_row['Beta']:.2f}")
             
-            plot_charts(df, selected_ticker, timeframe_days, candle_type, show_bollinger, show_volume_profile, show_slope, show_macd, show_supertrend, show_rs, benchmark_df)
+            plot_charts(df, selected_ticker, timeframe_days, candle_type, show_bollinger, show_volume_profile, show_slope, show_macd, show_adx, show_rs, benchmark_df, is_dark_mode)
         else:
             st.info("👆 Select a row (checkmark) to view the chart.")
 
@@ -805,10 +832,10 @@ def main():
         df_11 = get_display_data(tickers)
         render_tab_content(df_11, f"Relative Strength > Benchmark (Slope > {rs_slope_min}°)", "tab11", docs.get(doc_key))
         
-    elif selected_tab == "Supertrend Buy":
-        tickers, doc_key = al.get_supertrend_buy_tickers(latest_df, df, st_multiplier, st_period)
+    elif selected_tab == "Strong ADX":
+        tickers, doc_key = al.get_strong_adx_tickers(latest_df, df, adx_threshold)
         df_12 = get_display_data(tickers)
-        render_tab_content(df_12, f"Supertrend BUY Signal (Last 3 Days)", "tab12", docs.get(doc_key))
+        render_tab_content(df_12, f"ADX > {adx_threshold} (Strong Trend)", "tab12", docs.get(doc_key))
 
 if __name__ == "__main__":
     main()

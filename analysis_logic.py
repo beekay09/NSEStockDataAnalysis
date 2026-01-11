@@ -160,39 +160,36 @@ def get_rs_strong_tickers(latest_df, df, benchmark_df, min_rs_slope=0):
             
     return strong_rs_tickers, "Relative Strength"
 
-def get_supertrend_buy_tickers(latest_df, df, multiplier=3, period=10):
+def get_strong_adx_tickers(latest_df, full_df, adx_threshold=25):
     """
-    Identify stocks that have just generated a Supertrend BUY signal.
-    Criteria:
-    1. Close crossed ABOVE Supertrend line recently (last 3 days).
-    2. Current trend is UP.
+    Find tickers with ADX > threshold indicating a strong trend.
+    Returns: List of tickers, Documentation Key
     """
-    buy_tickers = []
+    tickers = []
     
-    for ticker in latest_df['Ticker'].tolist():
-        stock_data = df[df['Ticker'] == ticker].sort_values('Date').tail(100)
-        
-        if len(stock_data) < period + 5:
+    # We need full history to calculate ADX
+    # Iterate over all tickers present in latest_df
+    candidate_tickers = latest_df['Ticker'].unique()
+    
+    for ticker in candidate_tickers:
+        try:
+            stock_df = full_df[full_df['Ticker'] == ticker].sort_values('Date')
+            
+            # optimization: skip if too short
+            if len(stock_df) < 30:
+                continue
+                
+            adx_data = mt.calculate_adx(stock_df)
+            
+            if adx_data.empty:
+                continue
+                
+            latest_adx = adx_data.iloc[-1]
+            
+            if latest_adx['ADX'] > adx_threshold:
+                tickers.append(ticker)
+                
+        except Exception as e:
             continue
             
-        st_data = mt.calculate_supertrend(stock_data, period, multiplier)
-        
-        # Check for crossover in last 3 days
-        recent = st_data.tail(4)
-        crossover = False
-        
-        # Crossover: Close > Supertrend AND Prev Close <= Prev Supertrend
-        # OR: Direction changed from -1 to 1
-        
-        for i in range(1, len(recent)):
-            curr = recent.iloc[i]
-            prev = recent.iloc[i-1]
-            
-            if (curr['Direction'] == 1) and (prev['Direction'] == -1):
-                crossover = True
-                break
-                
-        if crossover:
-            buy_tickers.append(ticker)
-            
-    return buy_tickers, "Supertrend Buy"
+    return tickers, "Strong ADX"
