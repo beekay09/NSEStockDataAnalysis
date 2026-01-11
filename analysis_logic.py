@@ -1,4 +1,5 @@
 import pandas as pd
+import metrics as mt
 
 def get_low_rsi_tickers(latest_df, rsi_threshold, min_angle):
     return latest_df[
@@ -78,3 +79,48 @@ def get_dma_bottoming_tickers(latest_df, dma, min_angle, max_angle, prev_max_ang
         (latest_df[cur_col] <= max_angle)
     )
     return latest_df[bottoming_mask]['Ticker'].tolist(), "DMA Bottoming"
+
+
+def get_macd_crossover_tickers(latest_df, df, min_angle):
+    # 1. Identify candidates (Positive 200DMA background)
+    candidates = latest_df[latest_df['200DMA_SLOPE'] > min_angle]['Ticker'].tolist()
+    
+    crossover_tickers = []
+    
+    # 2. Iterate and check MACD condition
+    for ticker in candidates:
+        # Get sufficient history for MACD (100 days should be enough)
+        stock_data = df[df['Ticker'] == ticker].sort_values('Date').tail(100)
+        
+        if len(stock_data) < 30:
+            continue
+            
+        macd_data = mt.calculate_macd(stock_data)
+        
+        # Check Crossover: 
+        # Today: MACD > Signal
+        # Yesterday: MACD <= Signal
+        
+        if len(macd_data) < 5:
+            continue
+            
+        # Check for crossover in the last 3 days
+        # We check indices -1 (Today), -2 (Yesterday), -3 (Day before)
+        # A crossover event at 'i' means MACD[i] > Signal[i] AND MACD[i-1] <= Signal[i-1]
+        
+        crossover_found = False
+        # We need the last 4 records to check 3 possible crossover events
+        recent = macd_data.tail(4)
+        
+        for i in range(1, len(recent)):
+            curr = recent.iloc[i]
+            prev = recent.iloc[i-1]
+            
+            if (curr['MACD'] > curr['Signal']) and (prev['MACD'] <= prev['Signal']):
+                crossover_found = True
+                break
+        
+        if crossover_found:
+            crossover_tickers.append(ticker)
+            
+    return crossover_tickers, "MACD Crossover"

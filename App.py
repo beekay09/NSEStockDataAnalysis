@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -11,6 +12,7 @@ import streamlit.components.v1 as components
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 import json
 import analysis_logic as al
+import metrics as mt
 
 # Page configuration
 st.set_page_config(
@@ -103,96 +105,10 @@ def load_documentation():
         # Fallback empty dict if file missing, to prevent crash
         return {}
 
-@st.cache_data
-def calculate_beta_metrics(df):
-    """Calculate Beta for each stock relative to the equal-weighted market index."""
-    # 1. Create a synthetic "Market" index (Equal Weighted)
-    market_returns = df.groupby('Date')['Daily_Return'].mean()
-    market_variance = market_returns.var()
+# --- 3. Calculation Functions ---
+# Moved to metrics.py
     
-    beta_map = {}
-    
-    # Calculate Beta for each stock
-    # Beta = Cov(Stock, Market) / Var(Market)
-    for ticker in df['Ticker'].unique():
-        stock_returns = df[df['Ticker'] == ticker].set_index('Date')['Daily_Return']
-        
-        # Align dates
-        aligned_data = pd.concat([stock_returns, market_returns], axis=1, join='inner').dropna()
-        
-        if len(aligned_data) > 30: # Minimum data points
-            covariance = aligned_data.iloc[:, 0].cov(aligned_data.iloc[:, 1])
-            beta = covariance / market_variance
-            beta_map[ticker] = beta
-        else:
-            beta_map[ticker] = np.nan
-            
-    return beta_map
-
-def calculate_heikin_ashi(df):
-    """Calculate Heikin Ashi candles from a DataFrame with Open, High, Low, Close."""
-    ha_df = df.copy()
-    
-    # HA Close
-    ha_df['Close'] = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
-    
-    # HA Open
-    # Initialize with the first row's data
-    ha_df['Open'] = 0.0
-    # We need to iterate because HA Open depends on previous HA Open
-    # Using a list for speed
-    open_prices = df['Open'].values
-    close_prices = df['Close'].values
-    ha_open = [ (open_prices[0] + close_prices[0]) / 2 ]
-    
-    # Calculate subsequent HA Opens
-    # HA_Open = (Prev_HA_Open + Prev_HA_Close) / 2
-    # Note: We use the *calculated* HA values for the previous candle
-    
-    # However, standard formula often uses: (Prev_HA_Open + Prev_HA_Close) / 2
-    # Let's do it iteratively
-    
-    ha_close_values = ha_df['Close'].values
-    
-    for i in range(1, len(df)):
-        prev_open = ha_open[-1]
-        prev_close = ha_close_values[i-1]
-        current_open = (prev_open + prev_close) / 2
-        ha_open.append(current_open)
-        
-    ha_df['Open'] = ha_open
-    
-    # HA High and Low
-    ha_df['High'] = ha_df[['High', 'Open', 'Close']].max(axis=1)
-    ha_df['Low'] = ha_df[['Low', 'Open', 'Close']].min(axis=1)
-    
-    return ha_df
-
-def calculate_bollinger_bands(df, window=20, num_std=2):
-    """Calculate Bollinger Bands."""
-    bb_df = df.copy()
-    bb_df['SMA'] = bb_df['Close'].rolling(window=window).mean()
-    bb_df['STD'] = bb_df['Close'].rolling(window=window).std()
-    bb_df['Upper'] = bb_df['SMA'] + (bb_df['STD'] * num_std)
-    bb_df['Lower'] = bb_df['SMA'] - (bb_df['STD'] * num_std)
-    return bb_df
-
-def calculate_volume_profile(df, bins=50):
-    """Calculate Volume Profile."""
-    # Use Close price for binning
-    price = df['Close']
-    volume = df['Volume']
-    
-    # Create bins
-    hist, bin_edges = np.histogram(price, bins=bins, weights=volume)
-    
-    # Center of bins
-    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    
-    vp_df = pd.DataFrame({'Price': bin_centers, 'Volume': hist})
-    return vp_df
-
-def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=True, show_volume_profile=False):
+def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=True, show_volume_profile=False, show_slope=False, show_macd=False):
     """Render interactive Plotly charts for a specific ticker."""
     stock_df = df[df['Ticker'] == ticker].copy()
     stock_df = stock_df.sort_values('Date')
@@ -202,24 +118,60 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
 
     # Calculate Heikin Ashi if selected
     if candle_type == "Heikin Ashi":
-        chart_df = calculate_heikin_ashi(stock_df)
+        chart_df = mt.calculate_heikin_ashi(stock_df)
     else:
         chart_df = stock_df
 
     # Calculate Bollinger Bands if requested (using original Close prices for accuracy)
     if show_bollinger:
-        bb_data = calculate_bollinger_bands(stock_df)
+        bb_data = mt.calculate_bollinger_bands(stock_df)
         
     # Calculate Volume Profile if requested
     if show_volume_profile:
-        vp_data = calculate_volume_profile(stock_df)
+        vp_data = mt.calculate_volume_profile(stock_df)
+
+    # Calculate MACD if requested
+    if show_macd:
+        macd_data = al.calculate_macd(stock_df)
+
+    # Determine Row Layout
+    # Row 1: Price
+    # Row 2: Volume
+    # Row 3: RSI
+    # Row 4: Slope History (Optional)
+    # Row 5: MACD (Optional)
+    
+    rows = 3
+    row_heights = [0.5, 0.15, 0.15]
+    specs = [[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": False}]]
+    
+    slope_row = None
+    macd_row = None
+    
+    if show_slope:
+        rows += 1
+        slope_row = rows
+        row_heights.append(0.15)
+        specs.append([{"secondary_y": False}])
+        
+    if show_macd:
+        rows += 1
+        macd_row = rows
+        row_heights.append(0.15)
+        specs.append([{"secondary_y": False}])
+
+    # Normalize row heights logic is handled by Plotly usually, but let's just pass relative weights
+    # Or just use the defaults for now which are equal. 
+    # Better: explicitly define height based on count.
+    
+    total_height = 700 + (200 * (rows - 3)) 
 
     fig = make_subplots(
-        rows=3, cols=1, 
+        rows=rows, cols=1, 
         shared_xaxes=True, 
-        vertical_spacing=0.05, 
-        row_heights=[0.6, 0.2, 0.2],
-        specs=[[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": False}]]
+        vertical_spacing=0.03, 
+        # row_heights=row_heights, # Simpler to let plotly auto-size or just use fixed height
+        specs=specs
     )
 
     # 1. Price Chart with moving averages
@@ -305,11 +257,47 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
         fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
         fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
 
+    # 4. Slope History Chart
+    if show_slope and slope_row:
+        if '200DMA_SLOPE' in stock_df.columns:
+            fig.add_trace(go.Scatter(
+                x=stock_df['Date'], y=stock_df['200DMA_SLOPE'],
+                line=dict(color='yellow', width=2), name='200 DMA Slope'
+            ), row=slope_row, col=1)
+            
+        if '20DMA_SLOPE' in stock_df.columns:
+             fig.add_trace(go.Scatter(
+                x=stock_df['Date'], y=stock_df['20DMA_SLOPE'],
+                line=dict(color='cyan', width=1, dash='dot'), name='20 DMA Slope'
+            ), row=slope_row, col=1)
+            
+        fig.add_hline(y=0, line_color="gray", row=slope_row, col=1)
+
+    # 5. MACD Chart
+    if show_macd and macd_row:
+        # Histogram colors
+        hist_colors = ['#00e676' if v >= 0 else '#ff1744' for v in macd_data['Hist']]
+        
+        fig.add_trace(go.Bar(
+            x=macd_data['Date'], y=macd_data['Hist'],
+            marker_color=hist_colors, name='MACD Hist'
+        ), row=macd_row, col=1)
+        
+        fig.add_trace(go.Scatter(
+            x=macd_data['Date'], y=macd_data['MACD'],
+            line=dict(color='white', width=1), name='MACD'
+        ), row=macd_row, col=1)
+        
+        fig.add_trace(go.Scatter(
+            x=macd_data['Date'], y=macd_data['Signal'],
+            line=dict(color='orange', width=1), name='Signal'
+        ), row=macd_row, col=1)
+
     # Layout updates
     layout_update = dict(
         title=f"{ticker} Technical Analysis ({candle_type})",
         xaxis_rangeslider_visible=False,
-        height=700,
+        height=total_height,
         showlegend=True,
         template="plotly_dark",
         plot_bgcolor='#0e1117',
@@ -351,6 +339,16 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
     # RSI Chart (Row 3): Subtle Grid
     fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.1)', row=3, col=1)
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.1)', row=3, col=1)
+    
+    # Slope Chart Grid
+    if show_slope and slope_row:
+        fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.1)', row=slope_row, col=1)
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.1)', title="Slope (°)", row=slope_row, col=1)
+
+    # MACD Chart Grid
+    if show_macd and macd_row:
+        fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.1)', row=macd_row, col=1)
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.1)', title="MACD", row=macd_row, col=1)
 
     st.plotly_chart(fig, use_container_width=True)
 
@@ -369,7 +367,12 @@ def main():
         return
 
     with st.spinner("Calculating metrics..."):
-        beta_map = calculate_beta_metrics(df)
+        # Wrap the cached calculation
+        @st.cache_data
+        def get_cached_beta(data):
+            return mt.calculate_beta_metrics(data)
+            
+        beta_map = get_cached_beta(df)
 
     # Calculate Volume Metrics (On-the-fly)
     # We need 20-day average volume. 
@@ -396,6 +399,10 @@ def main():
     candle_type = st.sidebar.radio("Candle Type", ["Heikin Ashi", "Normal"], index=0)
     show_bollinger = st.sidebar.checkbox("Show Bollinger Bands", value=True)
     show_volume_profile = st.sidebar.checkbox("Show Volume Profile", value=False)
+    
+    st.sidebar.markdown("---")
+    show_slope = st.sidebar.checkbox("Show Slope History", value=True)
+    show_macd = st.sidebar.checkbox("Show MACD", value=False)
 
     # --- Top Navigation ---
     tab_options = [
@@ -408,7 +415,8 @@ def main():
         "Actual Crossover",
         "Potential Crossover",
         "Volume Shockers",
-        "DMA Bottoming"
+        "DMA Bottoming",
+        "MACD Crossover"
     ]
     
     selected_tab = st.radio("Select Analysis Mode", tab_options, horizontal=True, label_visibility="collapsed")
@@ -478,6 +486,10 @@ def main():
         t9_min_angle = st.sidebar.number_input(f"Min Current {selected_dma_bot}DMA Angle", value=-2.0, step=0.5, key=f"t9_min_{selected_dma_bot}")
         t9_max_angle = st.sidebar.number_input(f"Max Current {selected_dma_bot}DMA Angle", value=10.0, step=0.5, key=f"t9_max_{selected_dma_bot}")
         t9_prev_max = st.sidebar.number_input(f"Max Previous {selected_dma_bot}DMA Angle", value=0.0, step=0.5, key=f"t9_prev_{selected_dma_bot}")
+        
+    elif selected_tab == "MACD Crossover":
+        st.sidebar.subheader("MACD Crossover Settings")
+        crossover_angle = st.sidebar.number_input("200 DMA Angle >", value=5, key="macd_angle")
 
     # --- Filter Logic and Display ---
     
@@ -658,7 +670,7 @@ def main():
             col4.metric("3 DMA Slope", f"{selected_row['3DMA Slope']:.2f}°")
             col5.metric("Beta", f"{selected_row['Beta']:.2f}")
             
-            plot_charts(df, selected_ticker, timeframe_days, candle_type, show_bollinger, show_volume_profile)
+            plot_charts(df, selected_ticker, timeframe_days, candle_type, show_bollinger, show_volume_profile, show_slope, show_macd)
         else:
             st.info("👆 Select a row (checkmark) to view the chart.")
 
@@ -721,6 +733,11 @@ def main():
              doc_10 = doc_10.format(selected_dma_bot=selected_dma_bot)
 
         render_tab_content(df_9, f"{selected_dma_bot}DMA Bottoming: Prev Angle <= {t9_prev_max}° → Current [{t9_min_angle}°, {t9_max_angle}°] (Turning Up)", "tab9", doc_10)
+
+    elif selected_tab == "MACD Crossover":
+        tickers, doc_key = al.get_macd_crossover_tickers(latest_df, df, crossover_angle)
+        df_10 = get_display_data(tickers)
+        render_tab_content(df_10, f"MACD Crossed Above Signal Line (Last 3 Days) (+200DMA Slope > {crossover_angle}°)", "tab10", docs.get(doc_key))
 
 if __name__ == "__main__":
     main()
