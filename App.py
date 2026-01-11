@@ -7,6 +7,8 @@ import os
 import time
 import subprocess
 import sys
+import streamlit.components.v1 as components 
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 # Page configuration
 st.set_page_config(
@@ -16,7 +18,7 @@ st.set_page_config(
 )
 
 # Constants
-DATA_FILE = "nse_stock_data_with_metrics.csv"
+DATA_FILE = "nse_stock_data_with_metrics_v2.csv"
 FRESHNESS_HOURS = 20
 
 # Custom CSS for Dark Background and Styling
@@ -134,10 +136,10 @@ def load_data():
         # Calculate Previous Day's 20DMA and 200DMA for Crossover Logic
         df['Prev_20DMA'] = df.groupby('Ticker')['20DMA'].shift(1)
         df['Prev_200DMA'] = df.groupby('Ticker')['200DMA'].shift(1)
-        # Calculate Previous Day's DMA Angles for Bottoming Logic (3, 20, 200)
+        # Calculate Previous Day's DMA Slopes for Bottoming Logic (3, 20, 200)
         for dma in [3, 20, 200]:
-            if f'{dma}DMA_LINE_ANGLE' in df.columns:
-                df[f'Prev_{dma}DMA_LINE_ANGLE'] = df.groupby('Ticker')[f'{dma}DMA_LINE_ANGLE'].shift(1)
+            if f'{dma}DMA_SLOPE' in df.columns:
+                df[f'Prev_{dma}DMA_SLOPE'] = df.groupby('Ticker')[f'{dma}DMA_SLOPE'].shift(1)
 
         # Calculate 20-Day Volume SMA for Volume Shockers
         df['Volume_20SMA'] = df.groupby('Ticker')['Volume'].transform(lambda x: x.rolling(window=20).mean())
@@ -543,23 +545,31 @@ def main():
     
     # helper to filter latest_df
     def get_display_data(tickers, include_vol_metrics=False):
-        # Select relevant columns for display
-        cols = ['Ticker', 'Close', '20DMA', '20DMA_LINE_ANGLE', '200DMA', '200DMA_LINE_ANGLE', 'RSI_14', 'RSI_14_angle', '3DMA_LINE_ANGLE', 'Beta']
-        if include_vol_metrics:
-            cols.extend(['Volume', 'VolumeRatio'])
+        # Standardized columns for all tabs
+        # We include all key metrics to provide a consistent view
+        cols = [
+            'Ticker', 'Close', 'RSI_14', 'RSI_14_SLOPE', 
+            'Beta', 'Volume', 'VolumeRatio', 
+            '3DMA_SLOPE', '20DMA_SLOPE', '200DMA_SLOPE',
+            '20DMA', '200DMA'
+        ]
+        # Remove potential duplicates just in case
+        cols = list(dict.fromkeys(cols))
             
         # Filter rows
         subset = latest_df[latest_df['Ticker'].isin(tickers)][cols].copy()
         
         # Rename for display
         rename_map = {
-            'Ticker': 'Ticker', 'Close': 'Price', '20DMA': '20 DMA', '20DMA_LINE_ANGLE': '20DMA Angle',
-            '200DMA': '200 DMA', '200DMA_LINE_ANGLE': '200DMA Angle', 
-            'RSI_14': 'RSI', 'RSI_14_angle': 'RSI Angle', 
-            '3DMA_LINE_ANGLE': '3DMA Angle', 'Beta': 'Beta'
+            'Ticker': 'Ticker', 'Close': 'Price', 
+            'RSI_14': 'RSI', 'RSI_14_SLOPE': 'RSI Slope',
+            'Beta': 'Beta',
+            'Volume': 'Volume', 'VolumeRatio': 'Vol Ratio',
+            '3DMA_SLOPE': '3DMA Slope',
+            '20DMA_SLOPE': '20DMA Slope',
+            '200DMA_SLOPE': '200DMA Slope',
+            '20DMA': '20 DMA (Price)', '200DMA': '200 DMA (Price)'
         }
-        if include_vol_metrics:
-            rename_map.update({'Volume': 'Volume', 'VolumeRatio': 'Vol Ratio'})
             
         subset = subset.rename(columns=rename_map)
         # Round appropriate columns
@@ -574,83 +584,163 @@ def main():
             st.info("No stocks matched this criteria.")
             return
 
-        if key_prefix == "tab8" and 'Vol Ratio' in data_df.columns:
-             display_data = data_df.style.background_gradient(subset=['Vol Ratio'], cmap='YlOrRd')
-        elif key_prefix == "tab2" and 'Beta' in data_df.columns:
-             display_data = data_df.style.background_gradient(subset=['Beta'], cmap='Blues')
-        elif key_prefix == "tab1" and 'RSI' in data_df.columns:
-             display_data = data_df.style.background_gradient(subset=['RSI'], cmap='RdYlGn_r')
-        elif (key_prefix == "tab4" or key_prefix == "tab5"):
-             # Apply gradient to the angle column if present
-             # We look for columns ending in "Angle"
-             angle_cols = [c for c in data_df.columns if "Angle" in c]
-             if angle_cols:
-                  display_data = data_df.style.background_gradient(subset=angle_cols, cmap='Purples')
-             else:
-                  display_data = data_df.style
-        else:
-             display_data = data_df.style
+        # Configure AgGrid
+        gb = GridOptionsBuilder.from_dataframe(data_df)
+        gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20) # Optional pagination
+        gb.configure_side_bar() # Add sidebar for columns/filters
+        gb.configure_default_column(groupable=True, value=True, enableRowGroup=True, aggFunc='sum', editable=False, resizable=True, filterable=True, sortable=True)
+        
+        # Selection
+        gb.configure_selection('single', use_checkbox=True, groupSelectsChildren=True) 
+        
+        # Enable Copy to Clipboard (Enterprise feature mostly, but standard copy works in community if configured)
+        # Actually standard browser copy works. enabling range selection helps.
+        gb.configure_grid_options(enableRangeSelection=True) 
+        
+        # Conditional Formatting (Simplified for AgGrid via CellStyle - easier to just rely on Dataframe styling if passed? 
+        # AgGrid in Streamlit doesn't easily inherit pandas styler. We need JS functions for cell styles.
+        # For this iteration, we might lose the colorful gradients unless we implement JS. 
+        # Given the "Improve grid" request, function > aesthetics here?
+        # User asked for "standardise grid columns" and "copy/export".
+        # I will prioritize those. Gradients are nice but AgGrid is complex with them.
+        # I'll stick to basic grid for now.
+        
+        # Button Layout: Push to right side (Icon buttons)
+        col_spacer, col_dl, col_copy = st.columns([15, 1, 1])
 
-        display_data = display_data.format(precision=2)
+        with col_dl:
+             csv = data_df.to_csv(index=False).encode('utf-8')
+             st.download_button(
+                 label="📥",
+                 data=csv,
+                 file_name=f"{key_prefix}_data.csv",
+                 mime="text/csv",
+                 key=f'download-csv-{key_prefix}',
+                 help="Download CSV"
+             )
 
-        # Sortable Data Grid with Selection
-        # on_select="rerun" makes the app rerun when a row is selected
-        # user can click headers to sort
-        event = st.dataframe(
-            display_data,
-            on_select="rerun",
-            selection_mode="single-row",
-            use_container_width=True,
-            hide_index=True,
+        with col_copy:
+            # Copy to Clipboard Button (Icon Style)
+            clipboard_text = data_df.to_csv(index=False, sep='\t') 
+            clipboard_text_js = clipboard_text.replace('`', '').replace('"', '\\"').replace('\n', '\\n')
+            
+            # JS to copy text - styled as a small icon button
+            copy_js = f"""
+            <div style="text-align: center;">
+                <button onclick="copyToClipboard()" title="Copy to Clipboard" style="
+                    background-color: #262730; 
+                    color: white; 
+                    border: 1px solid #464b5d; 
+                    padding: 0.25rem 0.5rem; 
+                    border-radius: 0.25rem; 
+                    cursor: pointer;
+                    font-size: 1.2rem;
+                    line-height: 1;
+                    width: auto;
+                    transition: all 0.2s;
+                " onmouseover="this.style.borderColor='#fafafa';this.style.backgroundColor='#464b5d'" 
+                  onmouseout="this.style.borderColor='#464b5d';this.style.backgroundColor='#262730'">
+                    📋
+                </button>
+                <div id="copy_msg_{key_prefix}" style="
+                    color: #00e676; 
+                    font-size: 0.7rem; 
+                    opacity: 0; 
+                    transition: opacity 0.5s; 
+                    margin-top: 2px;
+                    text-align: center;
+                    white-space: nowrap;
+                    margin-left: -10px;
+                ">Copied!</div>
+            </div>
+            <script>
+                function copyToClipboard() {{
+                    const text = `{clipboard_text_js}`;
+                    navigator.clipboard.writeText(text).then(function() {{
+                        const msg = document.getElementById("copy_msg_{key_prefix}");
+                        msg.style.opacity = 1;
+                        setTimeout(function() {{ msg.style.opacity = 0; }}, 2000);
+                    }}, function(err) {{
+                        console.error('Async: Could not copy text: ', err);
+                    }});
+                }}
+            </script>
+            """
+            st.components.v1.html(copy_js, height=50)
+
+        gridOptions = gb.build()
+        
+        grid_response = AgGrid(
+            data_df,
+            gridOptions=gridOptions,
+            data_return_mode='AS_INPUT', 
+            update_mode='SELECTION_CHANGED', # Only update when selection changes
+            fit_columns_on_grid_load=False,
+            theme='balham', # 'streamlit', 'alpine', 'balham', 'material'
+            enable_enterprise_modules=False,
+            height=400, 
+            width='100%',
+            reload_data=False,
             key=f"grid_{key_prefix}"
         )
 
-        # Check selection
-        selected_rows = event.selection.rows
+        selected = grid_response['selected_rows']
         
-        if selected_rows:
-            # Get the Ticker from the selected row index
-            # data_df is what was displayed (filtered). Use iloc on it.
-            selected_index = selected_rows[0]
-            selected_ticker = data_df.iloc[selected_index]['Ticker']
+        # Robust selection check to avoid "ambiguous truth value" error
+        has_selection = False
+        if isinstance(selected, list):
+            has_selection = len(selected) > 0
+        elif isinstance(selected, pd.DataFrame):
+            has_selection = not selected.empty
             
+        if has_selection: 
+            # AgGrid returns a list of dictionaries/rows or a DataFrame
+            # Since we selected single, it's a list of 1 dict or 1 row DF
+            if isinstance(selected, pd.DataFrame):
+                 selected_row = selected.iloc[0]
+                 selected_ticker = selected_row['Ticker']
+            elif isinstance(selected, list):
+                 selected_ticker = selected[0]['Ticker']
+                 selected_row = selected[0] # Dict
+            else:
+                 return
+
             st.markdown("---")
             st.subheader(f"Analysis for {selected_ticker}")
             
-            # Show metrics (using the row from the display df itself for speed)
-            row = data_df.iloc[selected_index]
             col1, col2, col3, col4, col5 = st.columns(5)
-            col1.metric("Close Price", f"{row['Price']:.2f}")
-            col2.metric("RSI (14)", f"{row['RSI']:.2f}")
-            col3.metric("200 DMA Angle", f"{row['200DMA Angle']:.2f}°")
-            col4.metric("3 DMA Angle", f"{row['3DMA Angle']:.2f}°")
-            col5.metric("Beta", f"{row['Beta']:.2f}")
+            # Access keys safely (dict or series)
+            col1.metric("Close Price", f"{selected_row['Price']:.2f}")
+            col2.metric("RSI (14)", f"{selected_row['RSI']:.2f}")
+            col3.metric("200 DMA Slope", f"{selected_row['200DMA Slope']:.2f}°")
+            col4.metric("3 DMA Slope", f"{selected_row['3DMA Slope']:.2f}°")
+            col5.metric("Beta", f"{selected_row['Beta']:.2f}")
             
             plot_charts(df, selected_ticker, timeframe_days, candle_type, show_bollinger, show_volume_profile)
         else:
-            st.info("👆 Click a row in the table above to view the chart.")
+            st.info("👆 Select a row (checkmark) to view the chart.")
 
     # Render Active Tab Content Only
     if selected_tab == "Low RSI":
         low_rsi_pos_slope_tickers = latest_df[
             (latest_df['RSI_14'] < t1_rsi) & 
-            (latest_df['200DMA_LINE_ANGLE'] > t1_angle)
+            (latest_df['200DMA_SLOPE'] > t1_angle)
         ]['Ticker'].tolist()
-        df_1 = get_display_data(low_rsi_pos_slope_tickers).sort_values(by=['RSI', 'RSI Angle'], ascending=[True, True])
+        df_1 = get_display_data(low_rsi_pos_slope_tickers).sort_values(by=['RSI', 'RSI Slope'], ascending=[True, True])
         render_tab_content(df_1, f"RSI < {t1_rsi} and 200 DMA Slope > {t1_angle}°", "tab1")
         
     elif selected_tab == "Low Beta":
         beta_threshold = latest_df['Beta'].quantile(t2_beta_pct)
         low_beta_pos_slope_tickers = latest_df[
             (latest_df['Beta'] <= beta_threshold) & 
-            (latest_df['200DMA_LINE_ANGLE'] > t2_angle)
+            (latest_df['200DMA_SLOPE'] > t2_angle)
         ]['Ticker'].tolist()
         df_2 = get_display_data(low_beta_pos_slope_tickers).sort_values(by='Beta', ascending=True)
         render_tab_content(df_2, f"Low Beta (Bottom {int(t2_beta_pct*100)}%) and 200 DMA Slope > {t2_angle}°", "tab2")
 
     elif selected_tab == "Narrow Band":
         narrow_band_tickers = []
-        candidates = latest_df[latest_df['200DMA_LINE_ANGLE'] > t3_angle]['Ticker'].tolist()
+        candidates = latest_df[latest_df['200DMA_SLOPE'] > t3_angle]['Ticker'].tolist()
         for ticker in candidates:
             stock_data = df[df['Ticker'] == ticker].sort_values('Date').tail(t3_days)
             if len(stock_data) < t3_days:
@@ -663,21 +753,14 @@ def main():
         render_tab_content(df_3, f"Narrow Price Band ({int(t3_band_pct*100)}% range/{t3_days} days) and 200 DMA Slope > {t3_angle}°", "tab3")
 
     elif selected_tab == "Divergence Slope":
-        slope_filtered = latest_df[latest_df['200DMA_LINE_ANGLE'] > t4_angle]
-        divergence_slope_tickers = slope_filtered.sort_values(by='3DMA_LINE_ANGLE', ascending=False).head(10)['Ticker'].tolist()
-        df_4 = get_display_data(divergence_slope_tickers, include_vol_metrics=True).sort_values(by='3DMA Angle', ascending=False)
-        render_tab_content(df_4, f"Top 10 High 3DMA Angle (Divergence) with 200 DMA Slope > {t4_angle}°", "tab4")
+        slope_filtered = latest_df[latest_df['200DMA_SLOPE'] > t4_angle]
+        divergence_slope_tickers = slope_filtered.sort_values(by='3DMA_SLOPE', ascending=False).head(10)['Ticker'].tolist()
+        df_4 = get_display_data(divergence_slope_tickers, include_vol_metrics=True).sort_values(by='3DMA Slope', ascending=False)
+        render_tab_content(df_4, f"Top 10 High 3DMA Slope (Divergence) with 200 DMA Slope > {t4_angle}°", "tab4")
 
     elif selected_tab == "High DMA Angle":
-        target_col = f"{selected_dma}DMA_LINE_ANGLE"
-        display_name = f"{selected_dma}DMA Angle"
-        
-        # We need to ensure the target column is available for display if it's not standard
-        # But get_display_data currently has hardcoded cols. 
-        # Let's rely on get_display_data to have them or we might need to patch it.
-        # Actually get_display_data has 3DMA, 20DMA, 200DMA angles hardcoded or accessible?
-        # It has 200DMA_LINE_ANGLE, 3DMA_LINE_ANGLE, 20DMA_LINE_ANGLE.
-        # It seems correct.
+        target_col = f"{selected_dma}DMA_SLOPE"
+        display_name = f"{selected_dma}DMA Slope"
         
         divergence_tickers = latest_df.sort_values(by=target_col, ascending=False).head(t5_top_n)['Ticker'].tolist()
         df_5 = get_display_data(divergence_tickers, include_vol_metrics=True).sort_values(by=display_name, ascending=False)
@@ -687,7 +770,7 @@ def main():
         actual_crossover_tickers = latest_df[
             (latest_df['20DMA'] > latest_df['200DMA']) &
             (latest_df['Prev_20DMA'] <= latest_df['Prev_200DMA']) &
-            (latest_df['200DMA_LINE_ANGLE'] > crossover_angle)
+            (latest_df['200DMA_SLOPE'] > crossover_angle)
         ]['Ticker'].tolist()
         df_6 = get_display_data(actual_crossover_tickers)
         render_tab_content(df_6, f"Actual Bullish Crossover (20DMA crosses 200DMA) + Slope > {crossover_angle}°", "tab6")
@@ -698,7 +781,7 @@ def main():
             (latest_df['200DMA'] != 0) &
             ((abs(latest_df['20DMA'] - latest_df['200DMA']) / latest_df['200DMA']) * 100 < proximity_pct) &
             (latest_df['20DMA'] > latest_df['Prev_20DMA']) &
-            (latest_df['200DMA_LINE_ANGLE'] > crossover_angle)
+            (latest_df['200DMA_SLOPE'] > crossover_angle)
         )
         potential_crossover_tickers = latest_df[mask_potential]['Ticker'].tolist()
         df_7 = get_display_data(potential_crossover_tickers)
@@ -708,16 +791,16 @@ def main():
         shockers_mask = (
             (latest_df['VolumeRatio'] > vol_shock_threshold) &
             (latest_df['20DayAvgVolume'] > min_volume) &
-            (latest_df['200DMA_LINE_ANGLE'] > t8_angle)
+            (latest_df['200DMA_SLOPE'] > t8_angle)
         )
         volume_shockers_tickers = latest_df[shockers_mask]['Ticker'].tolist()
         df_8 = get_display_data(volume_shockers_tickers, include_vol_metrics=True).sort_values(by='Vol Ratio', ascending=False)
         render_tab_content(df_8, f"Volume > {vol_shock_threshold}x Avg AND Avg Vol > {min_volume} AND Slope > {t8_angle}°", "tab8")
 
     elif selected_tab == "DMA Bottoming":
-        cur_col = f"{selected_dma_bot}DMA_LINE_ANGLE"
-        prev_col = f"Prev_{selected_dma_bot}DMA_LINE_ANGLE"
-        display_name_bot = f"{selected_dma_bot}DMA Angle"
+        cur_col = f"{selected_dma_bot}DMA_SLOPE"
+        prev_col = f"Prev_{selected_dma_bot}DMA_SLOPE"
+        display_name_bot = f"{selected_dma_bot}DMA Slope"
         
         bottoming_mask = (
             (latest_df[prev_col] <= t9_prev_max) &

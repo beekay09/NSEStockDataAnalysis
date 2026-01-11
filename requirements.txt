@@ -6,3 +6,5 @@ plotly
 matplotlib
 nbformat
 ipykernel
+
+streamlit-aggrid

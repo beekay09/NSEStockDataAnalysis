@@ -8,7 +8,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 REQUIRED_FILE = "nse_stock_data.csv"
-OUTPUT_FILE = "nse_stock_data_with_metrics.csv"
+OUTPUT_FILE = "nse_stock_data_with_metrics_v2.csv"
 FRESHNESS_HOURS = 8
 
 def calculate_rsi(series, period=14):
@@ -99,7 +99,7 @@ def main():
                   # [f'{w}VWMA' for w in [3, 20, 100, 200]] + \
     
     for col in metrics_cols:
-        angle_col = f'{col}_LINE_ANGLE' if 'RSI' not in col else f'{col}_angle'
+        angle_col = f'{col}_SLOPE' 
         # We also shift the angle up by 1 row to fix the alignment lag
         df[angle_col] = df.groupby('Ticker')[col].transform(lambda x: calculate_angle(x,3))
 
