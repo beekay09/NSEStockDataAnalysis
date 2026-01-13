@@ -2,18 +2,37 @@ import pandas as pd
 import numpy as np
 import metrics as mt
 
-def get_low_rsi_tickers(latest_df, rsi_threshold, min_angle):
-    return latest_df[
+def get_low_rsi_tickers(latest_df, rsi_threshold, min_angle, rsi_turning_up=False, volume_spike=False):
+    mask = (
         (latest_df['RSI_14'] < rsi_threshold) & 
         (latest_df['200DMA_SLOPE'] > min_angle)
-    ]['Ticker'].tolist(), "Low RSI"
+    )
+    
+    if rsi_turning_up:
+        mask = mask & (latest_df['RSI_14_SLOPE'] > 0)
+        
+    if volume_spike:
+        # Volume > 2x Avg AND Green Candle (Close >= Open)
+        mask = mask & (latest_df['VolumeRatio'] > 2.0) & (latest_df['Close'] >= latest_df['Open'])
 
-def get_low_beta_tickers(latest_df, beta_percentile, min_angle):
+    return latest_df[mask]['Ticker'].tolist(), "Low RSI"
+
+def get_low_beta_tickers(latest_df, beta_percentile, min_angle, near_200dma=False, rsi_turning_up=False):
     beta_threshold = latest_df['Beta'].quantile(beta_percentile)
-    return latest_df[
+    mask = (
         (latest_df['Beta'] <= beta_threshold) & 
         (latest_df['200DMA_SLOPE'] > min_angle)
-    ]['Ticker'].tolist(), "Low Beta"
+    )
+    
+    if near_200dma:
+        # Close within 5% of 200DMA
+        # abs(Close - 200DMA) / 200DMA <= 0.05
+        mask = mask & (abs(latest_df['Close'] - latest_df['200DMA']) / latest_df['200DMA'] <= 0.05)
+        
+    if rsi_turning_up:
+        mask = mask & (latest_df['RSI_14_SLOPE'] > 0)
+
+    return latest_df[mask]['Ticker'].tolist(), "Low Beta"
 
 def get_narrow_band_tickers(latest_df, df, band_pct, lookback_days, min_angle):
     narrow_band_tickers = []
@@ -28,8 +47,15 @@ def get_narrow_band_tickers(latest_df, df, band_pct, lookback_days, min_angle):
             narrow_band_tickers.append(ticker)
     return narrow_band_tickers, "Narrow Band"
 
-def get_divergence_slope_tickers(latest_df, min_angle):
+def get_divergence_slope_tickers(latest_df, min_angle, rsi_check=False, volume_check=False, max_rsi=70, min_vol_ratio=1.0):
     slope_filtered = latest_df[latest_df['200DMA_SLOPE'] > min_angle]
+    
+    if rsi_check:
+        slope_filtered = slope_filtered[slope_filtered['RSI_14'] < max_rsi]
+        
+    if volume_check:
+        slope_filtered = slope_filtered[slope_filtered['VolumeRatio'] > min_vol_ratio]
+
     return slope_filtered.sort_values(by='3DMA_SLOPE', ascending=False).head(10)['Ticker'].tolist(), "Divergence Slope"
 
 def get_high_dma_angle_tickers(latest_df, dma, top_n, min_angle):

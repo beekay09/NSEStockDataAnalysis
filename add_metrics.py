@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 import time
+import datetime
 import fetch_data
 import warnings
 
@@ -32,9 +33,31 @@ def calculate_angle(series, window=1):
 
 def main():
     # 0. Output Freshness Check
+    # 0. Output Freshness Check
     if os.path.exists(OUTPUT_FILE):
         output_mod_time = os.path.getmtime(OUTPUT_FILE)
-        if (time.time() - output_mod_time) / 3600 < FRESHNESS_HOURS:
+        
+        # Smart Refresh Logic
+        current_dt = datetime.datetime.now()
+        file_mod_dt = datetime.datetime.fromtimestamp(output_mod_time)
+        
+        # Smart Refresh Logic
+        current_dt = datetime.datetime.now()
+        file_mod_dt = datetime.datetime.fromtimestamp(output_mod_time)
+        
+        # Check if it is "Post Market" (After 3:31 PM)
+        is_post_market = (current_dt.hour > 15) or (current_dt.hour == 15 and current_dt.minute >= 31)
+        
+        # Check if file was updated BEFORE 3:31 PM today
+        # Construct "Today 3:31 PM"
+        today_cutoff = current_dt.replace(hour=15, minute=31, second=0, microsecond=0)
+        
+        should_smart_update = is_post_market and (file_mod_dt < today_cutoff)
+        
+        if should_smart_update:
+             print(f"It is after 3:31 PM and data is from {file_mod_dt}. Updating for latest market data...")
+             # Pass through to fetch data
+        elif (time.time() - output_mod_time) / 3600 < FRESHNESS_HOURS:
             print(f"Output file {OUTPUT_FILE} is fresh. Skipping update.")
             return
 

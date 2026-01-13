@@ -5,6 +5,7 @@ from plotly.subplots import make_subplots
 import numpy as np
 import os
 import time
+import datetime
 import subprocess
 import sys
 import streamlit.components.v1 as components 
@@ -45,7 +46,24 @@ def check_and_update_data():
     else:
         mod_time = os.path.getmtime(DATA_FILE)
         age_hours = (time.time() - mod_time) / 3600
-        if age_hours > FRESHNESS_HOURS:
+        
+        # Smart Refresh Logic
+        current_dt = datetime.datetime.now()
+        file_mod_dt = datetime.datetime.fromtimestamp(mod_time)
+        
+        # Check if it is "Post Market" (After 3:31 PM)
+        is_post_market = (current_dt.hour > 15) or (current_dt.hour == 15 and current_dt.minute >= 31)
+        
+        # Check if file was updated BEFORE 3:31 PM today
+        # Construct "Today 3:31 PM"
+        today_cutoff = current_dt.replace(hour=15, minute=31, second=0, microsecond=0)
+        
+        should_smart_update = is_post_market and (file_mod_dt < today_cutoff)
+
+        if should_smart_update:
+            should_update = True
+            msg = f"Post-Market Update (3:31 PM): Data is from {file_mod_dt.strftime('%H:%M')}. Refreshing..."
+        elif age_hours > FRESHNESS_HOURS:
             should_update = True
             msg = f"Data is {age_hours:.1f} hours old (Limit: {FRESHNESS_HOURS}h). Updating..."
     
@@ -111,7 +129,7 @@ def load_documentation():
 # --- 3. Calculation Functions ---
 # Moved to metrics.py
     
-def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=True, show_volume_profile=False, show_slope=False, show_macd=False, show_adx=False, show_rs=False, benchmark_df=None, is_dark_mode=True):
+def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=True, show_volume_profile=False, show_slope=False, show_macd=False, show_adx=False, show_rs=False, show_crosshair=True, benchmark_df=None, is_dark_mode=True):
     """Render interactive Plotly charts for a specific ticker."""
     stock_df = df[df['Ticker'] == ticker].copy()
     stock_df = stock_df.sort_values('Date')
@@ -374,6 +392,32 @@ def plot_charts(df, ticker, days=180, candle_type="Heikin Ashi", show_bollinger=
         fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.1)', row=slope_row, col=1)
         fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.1)', title="Slope (°)", row=slope_row, col=1)
 
+    # Crosshair Configuration
+    if show_crosshair:
+        fig.update_layout(hovermode='x unified') # Unified hover for all subplots
+        
+        # Configure Spikes for X and Y axes
+        fig.update_xaxes(
+            showspikes=True, 
+            spikemode='across', 
+            spikesnap='cursor', # Using cursor to feel more responsive, 'hovered data' for precision if needed? User asked "follow my pointer". 
+            # If we want exact data tooltips, 'hovered data' is better but feels "jumpy".
+            # The user asked: "vertical gridline follow my pointer" AND "tool tips at all cutting points".
+            # 'cursor' + 'unified' hover usually achieves this best visually.
+            showline=False, 
+            spikedash='dash',
+            spikecolor='rgba(200,200,200,0.5)', 
+            spikethickness=1
+        )
+        fig.update_yaxes(
+            showspikes=True, 
+            spikemode='across', 
+            spikesnap='cursor', 
+            spikedash='dash',
+            spikecolor='rgba(200,200,200,0.5)',
+            spikethickness=1
+        )
+
     # MACD Chart Grid
     if show_macd and macd_row:
         fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.1)', row=macd_row, col=1)
@@ -480,6 +524,7 @@ def main():
     show_macd = st.sidebar.checkbox("Show MACD", value=True)
     show_adx = st.sidebar.checkbox("Show ADX", value=True)
     show_rs = st.sidebar.checkbox("Show RS (vs Nifty ETF)", value=False)
+    show_crosshair = st.sidebar.checkbox("Show Crosshair", value=True)
 
     # --- Top Navigation ---
     tab_options = [
@@ -519,11 +564,15 @@ def main():
         st.sidebar.subheader("Low RSI Settings")
         t1_rsi = st.sidebar.slider("RSI Threshold", 0, 100, 30, key="t1_rsi")
         t1_angle = st.sidebar.number_input("200 DMA Angle >", value=5, key="t1_angle")
+        t1_rsi_up = st.sidebar.checkbox("RSI Turning Up (Slope > 0)", value=False, key="t1_rsi_up")
+        t1_vol_spike = st.sidebar.checkbox("Buy Volume Spike (> 2x Avg)", value=False, key="t1_vol_spike")
         
     elif selected_tab == "Low Beta":
         st.sidebar.subheader("Low Beta Settings")
         t2_beta_pct = st.sidebar.slider("Beta Percentile (Bottom %)", 0.05, 0.5, 0.25, 0.05, key="t2_beta")
         t2_angle = st.sidebar.number_input("200 DMA Angle >", value=5, key="t2_angle") 
+        t2_near_200 = st.sidebar.checkbox("Near 200 DMA (±5%)", value=False, key="t2_near_200")
+        t2_rsi_up = st.sidebar.checkbox("RSI Turning Up (Slope > 0)", value=False, key="t2_rsi_up") 
 
     elif selected_tab == "Narrow Band":
         st.sidebar.subheader("Narrow Band Settings")
@@ -534,6 +583,17 @@ def main():
     elif selected_tab == "Divergence Slope":
         st.sidebar.subheader("Divergence Slope Settings")
         t4_angle = st.sidebar.number_input("200 DMA Slope >", value=5, key="t4_angle")
+        t4_rsi_check = st.sidebar.checkbox("RSI < X (Not Overbought)", value=False, key="t4_rsi_check")
+        if t4_rsi_check:
+            t4_max_rsi = st.sidebar.slider("Max RSI", 30, 90, 70, key="t4_max_rsi")
+        else:
+            t4_max_rsi = 70
+            
+        t4_vol_check = st.sidebar.checkbox("Volume > X Avg", value=False, key="t4_vol_check")
+        if t4_vol_check:
+            t4_min_vol_ratio = st.sidebar.number_input("Min Volume Ratio", 0.5, 5.0, 1.0, 0.1, key="t4_min_vol_ratio")
+        else:
+            t4_min_vol_ratio = 1.0
 
     elif selected_tab == "High DMA Angle":
         st.sidebar.subheader("DMA Angle Settings")
@@ -581,6 +641,12 @@ def main():
         adx_crossover = st.sidebar.checkbox("Fresh Bullish Crossover Only", value=False, key="adx_crossover")
         # Disable buy side only if crossover is selected (implied)
         adx_buy_side = st.sidebar.checkbox("Buy Side Only (Green > Red)", value=True, key="adx_buy_side", disabled=adx_crossover)
+
+    # --- Sidebar Footer ---
+    st.sidebar.markdown("---")
+    if not df.empty:
+        max_date = df['Date'].max()
+        st.sidebar.caption(f"Data Date: {max_date.strftime('%Y-%m-%d')}")
 
     # --- Filter Logic and Display ---
     
@@ -761,20 +827,30 @@ def main():
             col4.metric("3 DMA Slope", f"{selected_row['3DMA Slope']:.2f}°")
             col5.metric("Beta", f"{selected_row['Beta']:.2f}")
             
-            plot_charts(df, selected_ticker, timeframe_days, candle_type, show_bollinger, show_volume_profile, show_slope, show_macd, show_adx, show_rs, benchmark_df, is_dark_mode)
+            plot_charts(df, selected_ticker, timeframe_days, candle_type, show_bollinger, show_volume_profile, show_slope, show_macd, show_adx, show_rs, show_crosshair, benchmark_df, is_dark_mode)
         else:
             st.info("👆 Select a row (checkmark) to view the chart.")
 
     # Render Active Tab Content Only
     if selected_tab == "Low RSI":
-        tickers, doc_key = al.get_low_rsi_tickers(latest_df, t1_rsi, t1_angle)
+        tickers, doc_key = al.get_low_rsi_tickers(latest_df, t1_rsi, t1_angle, t1_rsi_up, t1_vol_spike)
         df_1 = get_display_data(tickers).sort_values(by=['RSI', 'RSI Slope'], ascending=[True, True])
-        render_tab_content(df_1, f"RSI < {t1_rsi} and 200 DMA Slope > {t1_angle}°", "tab1", docs.get(doc_key))
+        
+        desc_1 = f"RSI < {t1_rsi} and 200 DMA Slope > {t1_angle}°"
+        if t1_rsi_up: desc_1 += " + RSI Up"
+        if t1_vol_spike: desc_1 += " + Vol Spike"
+        
+        render_tab_content(df_1, desc_1, "tab1", docs.get(doc_key))
         
     elif selected_tab == "Low Beta":
-        tickers, doc_key = al.get_low_beta_tickers(latest_df, t2_beta_pct, t2_angle)
+        tickers, doc_key = al.get_low_beta_tickers(latest_df, t2_beta_pct, t2_angle, t2_near_200, t2_rsi_up)
         df_2 = get_display_data(tickers).sort_values(by='Beta', ascending=True)
-        render_tab_content(df_2, f"Low Beta (Bottom {int(t2_beta_pct*100)}%) and 200 DMA Slope > {t2_angle}°", "tab2", docs.get(doc_key))
+        
+        desc_2 = f"Low Beta (Bottom {int(t2_beta_pct*100)}%) and 200 DMA Slope > {t2_angle}°"
+        if t2_near_200: desc_2 += " + Near 200DMA"
+        if t2_rsi_up: desc_2 += " + RSI Up"
+        
+        render_tab_content(df_2, desc_2, "tab2", docs.get(doc_key))
 
     elif selected_tab == "Narrow Band":
         tickers, doc_key = al.get_narrow_band_tickers(latest_df, df, t3_band_pct, t3_days, t3_angle)
@@ -782,9 +858,14 @@ def main():
         render_tab_content(df_3, f"Narrow Price Band ({int(t3_band_pct*100)}% range/{t3_days} days) and 200 DMA Slope > {t3_angle}°", "tab3", docs.get(doc_key))
 
     elif selected_tab == "Divergence Slope":
-        tickers, doc_key = al.get_divergence_slope_tickers(latest_df, t4_angle)
+        tickers, doc_key = al.get_divergence_slope_tickers(latest_df, t4_angle, t4_rsi_check, t4_vol_check, t4_max_rsi, t4_min_vol_ratio)
         df_4 = get_display_data(tickers, include_vol_metrics=True).sort_values(by='3DMA Slope', ascending=False)
-        render_tab_content(df_4, f"Top 10 High 3DMA Slope (Divergence) with 200 DMA Slope > {t4_angle}°", "tab4", docs.get(doc_key))
+        
+        desc_4 = f"Top 10 High 3DMA Slope (Divergence) with 200 DMA Slope > {t4_angle}°"
+        if t4_rsi_check: desc_4 += f" + RSI < {t4_max_rsi}"
+        if t4_vol_check: desc_4 += f" + VolRatio > {t4_min_vol_ratio}"
+        
+        render_tab_content(df_4, desc_4, "tab4", docs.get(doc_key))
 
     elif selected_tab == "High DMA Angle":
         tickers, doc_key = al.get_high_dma_angle_tickers(latest_df, selected_dma, t5_top_n, t5_angle)
