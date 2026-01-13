@@ -160,9 +160,11 @@ def get_rs_strong_tickers(latest_df, df, benchmark_df, min_rs_slope=0):
             
     return strong_rs_tickers, "Relative Strength"
 
-def get_strong_adx_tickers(latest_df, full_df, adx_threshold=25):
+def get_strong_adx_tickers(latest_df, full_df, adx_threshold=25, buy_side_only=True, crossover_only=False):
     """
     Find tickers with ADX > threshold indicating a strong trend.
+    If buy_side_only is True, filters for +DI > -DI (Bullish trends only).
+    If crossover_only is True, filters for Fresh Bullish Crossover (+DI > -DI today AND +DI <= -DI yesterday).
     Returns: List of tickers, Documentation Key
     """
     tickers = []
@@ -181,13 +183,27 @@ def get_strong_adx_tickers(latest_df, full_df, adx_threshold=25):
                 
             adx_data = mt.calculate_adx(stock_df)
             
-            if adx_data.empty:
+            if adx_data.empty or len(adx_data) < 2:
                 continue
                 
             latest_adx = adx_data.iloc[-1]
+            prev_adx = adx_data.iloc[-2]
             
             if latest_adx['ADX'] > adx_threshold:
-                tickers.append(ticker)
+                # Check Direction if required
+                if crossover_only:
+                    # Fresh Bullish Crossover: Today Bullish AND Yesterday Bearish/Neutral
+                    is_bullish_today = latest_adx['+DI'] > latest_adx['-DI']
+                    is_bullish_yesterday = prev_adx['+DI'] > prev_adx['-DI']
+                    
+                    if is_bullish_today and not is_bullish_yesterday:
+                        tickers.append(ticker)
+                        
+                elif buy_side_only:
+                    if latest_adx['+DI'] > latest_adx['-DI']:
+                         tickers.append(ticker)
+                else:
+                    tickers.append(ticker)
                 
         except Exception as e:
             continue

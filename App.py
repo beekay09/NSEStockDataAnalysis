@@ -578,6 +578,9 @@ def main():
     elif selected_tab == "Strong ADX":
         st.sidebar.subheader("ADX Settings")
         adx_threshold = st.sidebar.number_input("Min ADX", value=25, key="adx_threshold")
+        adx_crossover = st.sidebar.checkbox("Fresh Bullish Crossover Only", value=False, key="adx_crossover")
+        # Disable buy side only if crossover is selected (implied)
+        adx_buy_side = st.sidebar.checkbox("Buy Side Only (Green > Red)", value=True, key="adx_buy_side", disabled=adx_crossover)
 
     # --- Filter Logic and Display ---
     
@@ -833,9 +836,16 @@ def main():
         render_tab_content(df_11, f"Relative Strength > Benchmark (Slope > {rs_slope_min}°)", "tab11", docs.get(doc_key))
         
     elif selected_tab == "Strong ADX":
-        tickers, doc_key = al.get_strong_adx_tickers(latest_df, df, adx_threshold)
+        tickers, doc_key = al.get_strong_adx_tickers(latest_df, df, adx_threshold, adx_buy_side, adx_crossover)
         df_12 = get_display_data(tickers)
-        render_tab_content(df_12, f"ADX > {adx_threshold} (Strong Trend)", "tab12", docs.get(doc_key))
+        
+        desc = f"ADX > {adx_threshold} (Strong Trend)"
+        if adx_crossover:
+            desc += " - Fresh Bullish Crossover (+DI crosses > -DI)"
+        elif adx_buy_side:
+            desc += " - Bullish Only (+DI > -DI)"
+            
+        render_tab_content(df_12, desc, "tab12", docs.get(doc_key))
 
 if __name__ == "__main__":
     main()
