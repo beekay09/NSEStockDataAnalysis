@@ -13,6 +13,11 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 import json
 import analysis_logic as al
 import metrics as mt
+import importlib
+try:
+    importlib.reload(al)
+except:
+    pass
 
 # Page configuration
 st.set_page_config(
@@ -528,6 +533,7 @@ def main():
 
     # --- Top Navigation ---
     tab_options = [
+        "Search",
         "Low RSI", 
         "Low Beta", 
         "Narrow Band", 
@@ -543,11 +549,17 @@ def main():
         "Strong ADX"
     ]
     
-    selected_tab = st.radio("Select Analysis Mode", tab_options, horizontal=True, label_visibility="collapsed")
+    selected_tab = st.sidebar.radio("Select Analysis", tab_options)
+    # selected_tab = st.radio("Select Analysis Mode", tab_options, horizontal=True, label_visibility="collapsed") # Reverting to sidebar for better UX with search
     st.markdown("---")
 
 
     st.sidebar.header("Filter Settings")
+    
+    # Check for Search Tab
+    if selected_tab == "Search":
+        st.sidebar.subheader("Search Settings")
+        search_query = st.sidebar.text_input("Search Ticker (min 2 chars)", value="")
     
     # Initialize variables with defaults (to avoid NameError)
     t1_rsi, t1_angle = 30, 5
@@ -618,6 +630,7 @@ def main():
         vol_shock_threshold = st.sidebar.slider("Volume Ratio (> x times avg)", 1.0, 10.0, 2.0, 0.1, key="vol_shock_threshold")
         min_volume = st.sidebar.number_input("Min Average Volume", value=10000, step=10000, key="min_volume")
         t8_angle = st.sidebar.number_input("200 DMA Slope >", value=5, key="t8_angle")
+        vol_shock_sentiment = st.sidebar.radio("Sentiement", ["Both", "Bullish", "Bearish"], index=0, horizontal=True)
 
     elif selected_tab == "DMA Bottoming":
         st.sidebar.subheader("DMA Bottoming Settings")
@@ -890,9 +903,14 @@ def main():
         render_tab_content(df_7, f"Potential Bullish Crossover (Gap < {proximity_pct}%) + Slope > {crossover_angle}°", "tab7", docs.get(doc_key))
 
     elif selected_tab == "Volume Shockers":
-        tickers, doc_key = al.get_volume_shockers_tickers(latest_df, vol_shock_threshold, min_volume, t8_angle)
+        tickers, doc_key = al.get_volume_shockers_tickers(latest_df, vol_shock_threshold, min_volume, t8_angle, vol_shock_sentiment)
         df_8 = get_display_data(tickers, include_vol_metrics=True).sort_values(by='Vol Ratio', ascending=False)
-        render_tab_content(df_8, f"Volume > {vol_shock_threshold}x Avg AND Avg Vol > {min_volume} AND Slope > {t8_angle}°", "tab8", docs.get(doc_key))
+        
+        desc_8 = f"Volume > {vol_shock_threshold}x Avg AND Avg Vol > {min_volume} AND Slope > {t8_angle}°"
+        if vol_shock_sentiment != "Both":
+            desc_8 += f" ({vol_shock_sentiment} Only)"
+            
+        render_tab_content(df_8, desc_8, "tab8", docs.get(doc_key))
 
     elif selected_tab == "DMA Bottoming":
         tickers, doc_key = al.get_dma_bottoming_tickers(latest_df, selected_dma_bot, t9_min_angle, t9_max_angle, t9_prev_max)
@@ -927,6 +945,16 @@ def main():
             desc += " - Bullish Only (+DI > -DI)"
             
         render_tab_content(df_12, desc, "tab12", docs.get(doc_key))
+
+    elif selected_tab == "Search":
+        tickers, doc_key = al.search_tickers(latest_df, search_query)
+        if tickers:
+            df_search = get_display_data(tickers)
+            render_tab_content(df_search, f"Search Results for '{search_query}'", "tab_search", docs.get(doc_key))
+        elif search_query and len(search_query) >= 2:
+             st.warning(f"No stocks found matching '{search_query}'")
+        else:
+             st.info("Please enter at least 2 characters in the sidebar to search.")
 
 if __name__ == "__main__":
     main()

@@ -87,13 +87,20 @@ def get_potential_crossover_tickers(latest_df, proximity_pct, min_angle):
     )
     return latest_df[mask_potential]['Ticker'].tolist(), "Potential Crossover"
 
-def get_volume_shockers_tickers(latest_df, vol_ratio_threshold, min_avg_vol, min_angle):
+def get_volume_shockers_tickers(latest_df, vol_ratio_threshold, min_avg_vol, min_angle, sentiment="Both"):
     shockers_mask = (
         (latest_df['VolumeRatio'] > vol_ratio_threshold) &
         (latest_df['20DayAvgVolume'] > min_avg_vol) &
         (latest_df['200DMA_SLOPE'] > min_angle)
     )
-    return latest_df[shockers_mask]['Ticker'].tolist(), "Volume Shockers"
+    filtered_df = latest_df[shockers_mask]
+    
+    if sentiment == "Bullish":
+        filtered_df = filtered_df[filtered_df['Close'] >= filtered_df['Open']]
+    elif sentiment == "Bearish":
+        filtered_df = filtered_df[filtered_df['Close'] < filtered_df['Open']]
+        
+    return filtered_df['Ticker'].tolist(), "Volume Shockers"
 
 def get_dma_bottoming_tickers(latest_df, dma, min_angle, max_angle, prev_max_angle):
     cur_col = f"{dma}DMA_SLOPE"
@@ -235,3 +242,11 @@ def get_strong_adx_tickers(latest_df, full_df, adx_threshold=25, buy_side_only=T
             continue
             
     return tickers, "Strong ADX"
+
+def search_tickers(latest_df, search_query):
+    if not search_query or len(search_query) < 2:
+        return [], "Search"
+    
+    query = search_query.upper()
+    mask = latest_df['Ticker'].str.contains(query, case=False, na=False)
+    return latest_df[mask]['Ticker'].tolist(), "Search"
