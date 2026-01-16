@@ -531,6 +531,19 @@ def main():
     show_rs = st.sidebar.checkbox("Show RS (vs Nifty ETF)", value=False)
     show_crosshair = st.sidebar.checkbox("Show Crosshair", value=True)
 
+    def load_watchlist(file_path="watchlist.txt"):
+        """Load tickers from a text file."""
+        import os # Import os here to ensure it's available
+        if not os.path.exists(file_path):
+            return []
+        try:
+            with open(file_path, "r") as f:
+                tickers = [line.strip().upper() for line in f if line.strip()]
+            return tickers
+        except Exception as e:
+            st.error(f"Error reading watchlist: {e}")
+            return []
+
     # --- Top Navigation ---
     tab_options = [
         "Search",
@@ -545,8 +558,10 @@ def main():
         "Volume Shockers",
         "DMA Bottoming",
         "MACD Crossover",
-        "Relative Strength",
-        "Strong ADX"
+    "Slope Crossover",
+    "Relative Strength",
+    "Strong ADX",
+    "My Watchlist"
     ]
     
     selected_tab = st.sidebar.radio("Select Analysis", tab_options)
@@ -644,10 +659,20 @@ def main():
         crossover_angle = st.sidebar.number_input("200 DMA Angle >", value=5, key="macd_angle")
         macd_lookback = st.sidebar.slider("Lookback Days (Signal)", 1, 10, 3, key="macd_lookback")
 
+    elif selected_tab == "Slope Crossover":
+        st.sidebar.subheader("Slope Crossover Settings")
+        slope_lookback = st.sidebar.slider("Lookback Days", 1, 10, 3, key="slope_lookback")
+        min_20dma_slope = st.sidebar.number_input("Min 20DMA Slope (Current)", value=0.0, step=0.5, key="slope_min_20")
+
     elif selected_tab == "Relative Strength":
         st.sidebar.subheader("RS Settings")
         rs_slope_min = st.sidebar.number_input("Min RS Slope >", value=0, key="rs_slope")
+        rs_200dma_angle = st.sidebar.number_input("200 DMA Angle >", value=5, key="rs_200dma_angle")
         
+    elif selected_tab == "My Watchlist":
+        st.sidebar.subheader("Watchlist Settings")
+        if st.sidebar.button("Reload Watchlist"):
+             st.rerun()
     elif selected_tab == "Strong ADX":
         st.sidebar.subheader("ADX Settings")
         adx_threshold = st.sidebar.number_input("Min ADX", value=25, key="adx_threshold")
@@ -929,10 +954,31 @@ def main():
         df_10 = get_display_data(tickers)
         render_tab_content(df_10, f"MACD Crossed Above Signal Line (Last {macd_lookback} Days) (+200DMA Slope > {crossover_angle}°)", "tab10", docs.get(doc_key))
 
+    elif selected_tab == "Slope Crossover":
+        tickers, doc_key = al.get_slope_crossover_tickers(latest_df, df, slope_lookback, min_20dma_slope)
+        df_slope = get_display_data(tickers).sort_values(by='20DMA Slope', ascending=False)
+        render_tab_content(df_slope, f"20DMA Slope Crossed ABOVE 200DMA Slope (Last {slope_lookback} Days)", "tab_slope", docs.get(doc_key))
+
     elif selected_tab == "Relative Strength":
-        tickers, doc_key = al.get_rs_strong_tickers(latest_df, df, benchmark_df, rs_slope_min)
+        tickers, doc_key = al.get_rs_strong_tickers(latest_df, df, benchmark_df, rs_slope_min, rs_200dma_angle)
         df_11 = get_display_data(tickers)
-        render_tab_content(df_11, f"Relative Strength > Benchmark (Slope > {rs_slope_min}°)", "tab11", docs.get(doc_key))
+        render_tab_content(df_11, f"Relative Strength > Benchmark (Slope > {rs_slope_min}°, 200DMA Angle > {rs_200dma_angle}°)", "tab11", docs.get(doc_key))
+
+    elif selected_tab == "My Watchlist":
+        watchlist_tickers = load_watchlist()
+        if not watchlist_tickers:
+            st.warning("Watchlist is empty or file not found. Please check 'watchlist.txt'.")
+        else:
+             # Filter latest_df for these tickers
+             my_stocks = latest_df[latest_df['Ticker'].isin(watchlist_tickers)]['Ticker'].tolist()
+             
+             # Identify missing stocks
+             missing = set(watchlist_tickers) - set(my_stocks)
+             if missing:
+                 st.sidebar.warning(f"Tickers not found in data: {', '.join(missing)}")
+             
+             df_watch = get_display_data(my_stocks, include_vol_metrics=True)
+             render_tab_content(df_watch, "Stocks from your customized 'watchlist.txt'", "tab_watch")
         
     elif selected_tab == "Strong ADX":
         tickers, doc_key = al.get_strong_adx_tickers(latest_df, df, adx_threshold, adx_buy_side, adx_crossover)

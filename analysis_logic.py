@@ -191,7 +191,52 @@ def get_rs_strong_tickers(latest_df, df, benchmark_df, min_rs_slope=0):
         if current_slope > min_rs_slope and current_rs > current_ma:
             strong_rs_tickers.append(ticker)
             
-    return strong_rs_tickers, "Relative Strength"
+    return list(set(strong_rs_tickers)), "RS > Benchmark"
+
+def get_slope_crossover_tickers(latest_df, df, lookback_days=3, min_20dma_slope=0):
+    """
+    Identify stocks where 20DMA Slope crossed ABOVE 200DMA Slope within the last N days.
+    Condition:
+    - At some point in window: Slope20 > Slope200 AND Prev_Slope20 <= Prev_Slope200
+    - Filter: Current 20DMA Slope > min_slope
+    """
+    crossover_tickers = []
+    
+    # Filter candidates: 20DMA Slope must be > 200DMA Slope NOW (or recently)
+    # Optimization: Only check stocks where latest 20DMA Slope > latest 200DMA Slope?
+    # No, crossover could have happened 2 days ago and they are still above.
+    # But if they are currently BELOW, then the crossover is invalid/reversed.
+    # So yes, Current Slope 20 > Current Slope 200 is a prereq for a "sustained" crossover.
+    
+    candidates = latest_df[
+        (latest_df['20DMA_SLOPE'] > latest_df['200DMA_SLOPE']) &
+        (latest_df['20DMA_SLOPE'] > min_20dma_slope)
+    ]['Ticker'].tolist()
+    
+    for ticker in candidates:
+        stock_data = df[df['Ticker'] == ticker].sort_values('Date')
+        
+        # We need lookback_days + 1 records to check crossover
+        if len(stock_data) < lookback_days + 2:
+            continue
+            
+        recent_data = stock_data.tail(lookback_days + 1).reset_index(drop=True)
+        
+        # Check for crossover event in recent history
+        for i in range(1, len(recent_data)):
+            # Current day i
+            curr_20 = recent_data.loc[i, '20DMA_SLOPE']
+            curr_200 = recent_data.loc[i, '200DMA_SLOPE']
+            
+            # Prev day i-1
+            prev_20 = recent_data.loc[i-1, '20DMA_SLOPE']
+            prev_200 = recent_data.loc[i-1, '200DMA_SLOPE']
+            
+            if (curr_20 > curr_200) and (prev_20 <= prev_200):
+                crossover_tickers.append(ticker)
+                break
+                
+    return crossover_tickers, f"Slope Crossover (Last {lookback_days} days)"
 
 def get_strong_adx_tickers(latest_df, full_df, adx_threshold=25, buy_side_only=True, crossover_only=False):
     """
