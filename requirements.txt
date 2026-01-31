@@ -3,8 +3,8 @@ numpy
 yfinance
 streamlit
 plotly
-streamlit-aggrid
-altair>=5.0.0
+st-aggrid
+altair<5
 matplotlib
 nbformat
 ipykernel
