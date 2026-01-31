@@ -157,18 +157,20 @@ def get_macd_crossover_tickers(latest_df, df, min_angle, lookback_days=3):
             
     return crossover_tickers, "MACD Crossover"
 
-def get_rs_strong_tickers(latest_df, df, benchmark_df, min_rs_slope=0):
+def get_rs_strong_tickers(latest_df, df, benchmark_df, min_rs_slope=0, min_200dma_angle=0):
     """
     Identify stocks showing relative strength vs Benchmark.
     Criteria:
     1. RS Line is uptrending (Slope > 0)
     2. RS Ratio > Moving Average (optional, simpler to just check slope)
+    3. 200DMA Angle > min_200dma_angle
     """
     strong_rs_tickers = []
     
-    # Pre-calculate Benchmark once? No, passed as arg.
+    # Filter by 200DMA Angle first
+    filtered_df = latest_df[latest_df['200DMA_SLOPE'] > min_200dma_angle]
     
-    for ticker in latest_df['Ticker'].tolist():
+    for ticker in filtered_df['Ticker'].tolist():
         stock_data = df[df['Ticker'] == ticker].sort_values('Date')
         
         # Need sufficient overlap
