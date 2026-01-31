@@ -3,8 +3,5 @@ numpy
 yfinance
 streamlit>=1.30.0
 plotly
-st-aggrid
-altair>=5.0.0
+streamlit-aggrid==0.3.4.post3
 matplotlib
-nbformat
-ipykernel
