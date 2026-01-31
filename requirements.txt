@@ -1,10 +1,10 @@
 pandas
 numpy
 yfinance
-streamlit
+streamlit>=1.30.0
 plotly
 st-aggrid
-altair<5
+altair>=5.0.0
 matplotlib
 nbformat
 ipykernel
