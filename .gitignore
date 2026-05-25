@@ -7,3 +7,6 @@ nse_stock_data.csv
 nse_stock_data_with_metrics.csv
 *.pyc
 nse_stock_data_with_metrics_v2.csv
+__pycache__/*.pyc
+__pycache__/fetch_data.cpython-313.pyc
+.streamlit/secrets.toml

@@ -64,18 +64,89 @@ def get_high_dma_angle_tickers(latest_df, dma, top_n, min_angle):
 
 def get_slope_difference_tickers(latest_df, min_diff, min_200_slope, top_n):
     # Ensure SlopeDiff is calculated
-    if 'SlopeDiff' not in latest_df.columns:
-        latest_df['SlopeDiff'] = latest_df['20DMA_SLOPE'] - latest_df['200DMA_SLOPE']
+    latest_df['SlopeDiff'] = latest_df['20DMA_SLOPE'] - latest_df['200DMA_SLOPE']
         
     mask = (latest_df['SlopeDiff'] >= min_diff) & (latest_df['200DMA_SLOPE'] > min_200_slope)
     return latest_df[mask].sort_values(by='SlopeDiff', ascending=False).head(top_n)['Ticker'].tolist(), "Slope Difference"
 
-def get_actual_crossover_tickers(latest_df, min_angle):
-    return latest_df[
-        (latest_df['20DMA'] > latest_df['200DMA']) &
-        (latest_df['Prev_20DMA'] <= latest_df['Prev_200DMA']) &
-        (latest_df['200DMA_SLOPE'] > min_angle)
-    ]['Ticker'].tolist(), "Actual Crossover"
+def get_actual_crossover_tickers(latest_df, full_df, min_angle, lookback_days=1):
+    """
+    Find stocks where 20DMA crossed above 200DMA within the last lookback_days.
+    Returns: (list of tickers, dict of {ticker: crossover_date}, doc_key)
+    """
+    if lookback_days <= 1:
+        # Original logic: only check latest day
+        mask = (
+            (latest_df['20DMA'] > latest_df['200DMA']) &
+            (latest_df['Prev_20DMA'] <= latest_df['Prev_200DMA']) &
+            (latest_df['200DMA_SLOPE'] > min_angle)
+        )
+        tickers = latest_df[mask]['Ticker'].tolist()
+        # For lookback=1, crossover date is the latest date
+        crossover_info = {}
+        for t in tickers:
+            row = latest_df[latest_df['Ticker'] == t]
+            if not row.empty and 'Date' in row.columns:
+                crossover_info[t] = row.iloc[0]['Date']
+        return tickers, crossover_info, "Actual Crossover"
+    
+    # Lookback > 1: scan historical data
+    candidates = latest_df[latest_df['200DMA_SLOPE'] > min_angle]['Ticker'].tolist()
+    crossover_tickers = []
+    crossover_info = {}
+    
+    for ticker in candidates:
+        stock_data = full_df[full_df['Ticker'] == ticker].sort_values('Date')
+        
+        if len(stock_data) < lookback_days + 2:
+            continue
+        
+        recent = stock_data.tail(lookback_days + 1).reset_index(drop=True)
+        
+        for i in range(1, len(recent)):
+            curr_20 = recent.loc[i, '20DMA']
+            curr_200 = recent.loc[i, '200DMA']
+            prev_20 = recent.loc[i-1, '20DMA']
+            prev_200 = recent.loc[i-1, '200DMA']
+            
+            if (curr_20 > curr_200) and (prev_20 <= prev_200):
+                crossover_tickers.append(ticker)
+                crossover_info[ticker] = recent.loc[i, 'Date']
+                break
+    
+    return crossover_tickers, crossover_info, "Actual Crossover"
+
+def get_price_dma_crossover_tickers(latest_df, full_df, min_angle, lookback_days=1, dma_period=100):
+    """
+    Find stocks where Price (Close) crossed above the specified DMA within the last lookback_days.
+    Returns: (list of tickers, dict of {ticker: crossover_date}, doc_key)
+    """
+    dma_col = f'{dma_period}DMA'
+    slope_col = f'{dma_period}DMA_SLOPE'
+    candidates = latest_df[latest_df[slope_col] > min_angle]['Ticker'].tolist()
+    crossover_tickers = []
+    crossover_info = {}
+    
+    for ticker in candidates:
+        stock_data = full_df[full_df['Ticker'] == ticker].sort_values('Date')
+        
+        if len(stock_data) < lookback_days + 2:
+            continue
+        
+        recent = stock_data.tail(lookback_days + 1).reset_index(drop=True)
+        
+        for i in range(1, len(recent)):
+            curr_close = recent.loc[i, 'Close']
+            curr_dma = recent.loc[i, dma_col]
+            prev_close = recent.loc[i-1, 'Close']
+            prev_dma = recent.loc[i-1, dma_col]
+            
+            if (curr_close > curr_dma) and (prev_close <= prev_dma):
+                crossover_tickers.append(ticker)
+                crossover_info[ticker] = recent.loc[i, 'Date']
+                break
+    
+    return crossover_tickers, crossover_info, "Actual Crossover"
 
 def get_potential_crossover_tickers(latest_df, proximity_pct, min_angle):
     mask_potential = (
@@ -297,3 +368,191 @@ def search_tickers(latest_df, search_query):
     query = search_query.upper()
     mask = latest_df['Ticker'].str.contains(query, case=False, na=False)
     return latest_df[mask]['Ticker'].tolist(), "Search"
+
+def get_heikin_ashi_turnover_tickers(latest_df, full_df, min_angle=0):
+    """
+    Identify stocks where Heikin Ashi candle turned from Red to Green.
+    Red: HA_Close < HA_Open
+    Green: HA_Close > HA_Open
+    """
+    turnover_tickers = []
+    
+    candidates = latest_df[latest_df['200DMA_SLOPE'] > min_angle]['Ticker'].tolist()
+    
+    for ticker in candidates:
+        stock_df = full_df[full_df['Ticker'] == ticker].sort_values('Date')
+        
+        if len(stock_df) < 2:
+            continue
+            
+        recent = stock_df.tail(2).reset_index(drop=True)
+        
+        if 'HA_Open' not in recent.columns or 'HA_Close' not in recent.columns:
+            continue
+            
+        prev_ha_open = recent.loc[0, 'HA_Open']
+        prev_ha_close = recent.loc[0, 'HA_Close']
+        curr_ha_open = recent.loc[1, 'HA_Open']
+        curr_ha_close = recent.loc[1, 'HA_Close']
+        
+        if (prev_ha_close < prev_ha_open) and (curr_ha_close > curr_ha_open):
+            turnover_tickers.append(ticker)
+            
+    return turnover_tickers, "Heikin Ashi Turn"
+
+def get_heikin_ashi_potential_turn_tickers(latest_df, full_df, min_angle=0):
+    """
+    Identify stocks where Heikin Ashi red candle bodies are shrinking,
+    suggesting weakening bearish momentum and a potential turn to green.
+    Criteria:
+    - Last 2 candles are both red (HA_Close < HA_Open)
+    - Current red body is smaller than previous red body (shrinking bears)
+    """
+    potential_tickers = []
+    
+    candidates = latest_df[latest_df['200DMA_SLOPE'] > min_angle]['Ticker'].tolist()
+    
+    for ticker in candidates:
+        stock_df = full_df[full_df['Ticker'] == ticker].sort_values('Date')
+        
+        if len(stock_df) < 3:
+            continue
+            
+        recent = stock_df.tail(3).reset_index(drop=True)
+        
+        if 'HA_Open' not in recent.columns or 'HA_Close' not in recent.columns:
+            continue
+        
+        prev2_ha_open = recent.loc[0, 'HA_Open']
+        prev2_ha_close = recent.loc[0, 'HA_Close']
+        prev_ha_open = recent.loc[1, 'HA_Open']
+        prev_ha_close = recent.loc[1, 'HA_Close']
+        curr_ha_open = recent.loc[2, 'HA_Open']
+        curr_ha_close = recent.loc[2, 'HA_Close']
+        
+        # Current candle must still be red
+        if curr_ha_close >= curr_ha_open:
+            continue
+        
+        # Previous candle must also be red
+        if prev_ha_close >= prev_ha_open:
+            continue
+        
+        curr_body = curr_ha_open - curr_ha_close  # positive since red
+        prev_body = prev_ha_open - prev_ha_close  # positive since red
+        
+        # Shrinking red body = weakening bears
+        if curr_body < prev_body:
+            potential_tickers.append(ticker)
+            
+    return potential_tickers, "Heikin Ashi Potential Turn"
+
+def check_10_ema_eligibility(df: pd.DataFrame, lookback: int = 20) -> bool:
+    """
+    Check if a stock passes the 10 EMA Institutional Trend strategy.
+    """
+    if len(df) < lookback + 10:
+        return False
+        
+    import pandas_ta as ta
+    df = df.copy()
+    
+    # Calculate 10 EMA
+    df.ta.ema(length=10, append=True)
+    ema_col = 'EMA_10'
+    
+    if ema_col not in df.columns:
+        return False
+        
+    recent_data = df.iloc[-lookback:].copy()
+    
+    # Condition A: Clear Upward Trend
+    recent_data['ema_slope'] = recent_data[ema_col].diff()
+    ema_rising_percentage = (recent_data['ema_slope'] > 0).mean()
+    if ema_rising_percentage < 0.60 or recent_data.iloc[-1][ema_col] <= recent_data.iloc[0][ema_col]:
+        return False
+        
+    # Condition B: EMA Cutting Price
+    is_cutting = (
+        ((recent_data['open'] > recent_data[ema_col]) & (recent_data['close'] < recent_data[ema_col])) | 
+        ((recent_data['open'] < recent_data[ema_col]) & (recent_data['close'] > recent_data[ema_col]))
+    )
+    cutting_percentage = is_cutting.mean()
+    if cutting_percentage > 0.30:
+        return False
+        
+    # Condition C: Respecting the Control Line
+    price_above_ema_percentage = (recent_data['close'] > recent_data[ema_col]).mean()
+    if price_above_ema_percentage < 0.60:
+        return False
+
+    # Condition D: Random Spikes / Illiquidity Filter
+    median_vol = recent_data['volume'].median()
+    if median_vol < 100000:
+        return False
+    if recent_data['volume'].max() > (median_vol * 10):
+        return False
+        
+    # Entry Confirmation Rules
+    setup_window = recent_data.iloc[-5:]
+    trigger_candle = recent_data.iloc[-1]
+    
+    # Condition E: Pullback to EMA
+    touched_ema = (setup_window['low'] <= setup_window[ema_col] * 1.005).any()
+    broke_below = (setup_window['close'] < setup_window[ema_col] * 0.99).any()
+    
+    if not touched_ema or broke_below:
+        return False
+        
+    # Condition F: Volume Contraction on Pullback
+    up_candles = recent_data[recent_data['close'] > recent_data['open']]
+    down_candles = recent_data[recent_data['close'] < recent_data['open']]
+    
+    if len(up_candles) == 0 or len(down_candles) == 0:
+        return False
+        
+    avg_up_volume = up_candles['volume'].mean()
+    avg_down_volume = down_candles['volume'].mean()
+    
+    if avg_down_volume > avg_up_volume:
+        return False
+        
+    recent_down_candles = setup_window[setup_window['close'] < setup_window['open']]
+    if not recent_down_candles.empty:
+        if (recent_down_candles['volume'] > avg_up_volume * 1.5).any():
+            return False
+            
+    # Condition G: Trigger Candle
+    is_bullish = trigger_candle['close'] > trigger_candle['open']
+    close_above_ema = trigger_candle['close'] > trigger_candle[ema_col]
+    
+    if not is_bullish or not close_above_ema:
+        return False
+        
+    return True
+
+def get_10_ema_strategy_tickers(latest_df, full_df, lookback=20, min_angle=0):
+    """
+    Find tickers that meet the 10 EMA Institutional Trend criteria.
+    """
+    eligible_tickers = []
+    
+    # Filter candidates by 200DMA angle to speed up
+    candidates = latest_df[latest_df['200DMA_SLOPE'] > min_angle]['Ticker'].tolist()
+    
+    for ticker in candidates:
+        stock_df = full_df[full_df['Ticker'] == ticker].sort_values('Date').tail(100)
+        
+        # Rename columns to lowercase for pandas_ta / our function expectations
+        stock_df = stock_df.rename(columns={
+            'Open': 'open',
+            'High': 'high',
+            'Low': 'low',
+            'Close': 'close',
+            'Volume': 'volume'
+        })
+        
+        if check_10_ema_eligibility(stock_df, lookback):
+            eligible_tickers.append(ticker)
+            
+    return eligible_tickers, "10 EMA Strategy"

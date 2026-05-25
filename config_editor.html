@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Filter Config Editor</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f1117; --surface: #1a1d27; --card: #222639;
+  --border: #2d3148; --text: #e8eaed; --muted: #9aa0b8;
+  --accent: #6c63ff; --accent2: #4fc3f7; --green: #00e676;
+  --red: #ff5252; --orange: #ffab40; --radius: 12px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; padding:24px; }
+
+header { text-align:center; margin-bottom:32px; }
+header h1 { font-size:28px; background:linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+header p { color:var(--muted); margin-top:6px; font-size:14px; }
+
+.toolbar { display:flex; gap:12px; justify-content:center; margin-bottom:28px; flex-wrap:wrap; }
+.btn { padding:10px 22px; border:none; border-radius:8px; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; transition:all .2s; display:inline-flex; align-items:center; gap:6px; }
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-primary:hover { background:#7c74ff; transform:translateY(-1px); box-shadow:0 4px 16px rgba(108,99,255,.35); }
+.btn-secondary { background:var(--card); color:var(--text); border:1px solid var(--border); }
+.btn-secondary:hover { border-color:var(--accent); }
+.btn-green { background:var(--green); color:#000; }
+.btn-green:hover { background:#33eb91; }
+
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); gap:20px; max-width:1400px; margin:0 auto; }
+
+.card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; transition:border-color .2s, box-shadow .2s; }
+.card:hover { border-color:var(--accent); box-shadow:0 0 20px rgba(108,99,255,.1); }
+.card.disabled { opacity:.5; }
+.card-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); background:rgba(108,99,255,.04); }
+.card-header h3 { font-size:15px; font-weight:600; }
+.card-body { padding:16px 20px 20px; display:flex; flex-direction:column; gap:12px; }
+
+.field { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.field label { font-size:13px; color:var(--muted); white-space:nowrap; min-width:120px; }
+.field input[type=number], .field select { background:var(--surface); border:1px solid var(--border); color:var(--text); padding:7px 12px; border-radius:6px; font-family:inherit; font-size:13px; width:140px; outline:none; transition:border-color .2s; }
+.field input[type=number]:focus, .field select:focus { border-color:var(--accent); }
+.field select { cursor:pointer; }
+
+/* Toggle switch */
+.toggle { position:relative; width:42px; height:22px; flex-shrink:0; }
+.toggle input { opacity:0; width:0; height:0; }
+.toggle .slider { position:absolute; inset:0; background:var(--border); border-radius:22px; cursor:pointer; transition:.25s; }
+.toggle .slider::before { content:''; position:absolute; width:16px; height:16px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.25s; }
+.toggle input:checked + .slider { background:var(--accent); }
+.toggle input:checked + .slider::before { transform:translateX(20px); }
+
+.hint { font-size:11px; color:var(--muted); font-style:italic; padding:0 4px; }
+
+.toast { position:fixed; bottom:24px; right:24px; background:var(--green); color:#000; padding:12px 24px; border-radius:8px; font-weight:600; font-size:14px; opacity:0; transform:translateY(20px); transition:all .3s; z-index:99; pointer-events:none; }
+.toast.show { opacity:1; transform:translateY(0); }
+
+#fileInput { display:none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Stock Filter Config Editor</h1>
+  <p>Load your filter_config.json, tweak parameters, then save.</p>
+</header>
+
+<div class="toolbar">
+  <input type="file" id="fileInput" accept=".json">
+  <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">📂 Load JSON</button>
+  <button class="btn btn-primary" onclick="resetToDefaults()">🔄 Reset Defaults</button>
+  <button class="btn btn-green" onclick="saveJSON()">💾 Save JSON</button>
+  <button class="btn btn-secondary" onclick="copyJSON()">📋 Copy to Clipboard</button>
+</div>
+
+<div class="grid" id="cards"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// Filter definitions: key, label, fields
+// field types: number, bool, select
+const SCHEMA = [
+  { key:"low_rsi", label:"Low RSI", fields:[
+    {k:"rsi_threshold",label:"RSI Threshold",type:"number",step:1,min:0,max:100},
+    {k:"min_200dma_slope",label:"200 DMA Slope >",type:"number",step:0.5},
+    {k:"rsi_turning_up",label:"RSI Turning Up",type:"bool"},
+    {k:"volume_spike",label:"Volume Spike (>2x)",type:"bool"}
+  ]},
+  { key:"low_beta", label:"Low Beta", fields:[
+    {k:"beta_percentile",label:"Beta Percentile",type:"number",step:0.05,min:0.05,max:0.5},
+    {k:"min_200dma_slope",label:"200 DMA Slope >",type:"number",step:0.5},
+    {k:"near_200dma",label:"Near 200 DMA (±5%)",type:"bool"},
+    {k:"rsi_turning_up",label:"RSI Turning Up",type:"bool"}
+  ]},
+  { key:"narrow_band", label:"Narrow Band", fields:[
+    {k:"band_pct",label:"Price Band %",type:"number",step:0.01,min:0.01,max:0.2},
+    {k:"lookback_days",label:"Lookback Days",type:"number",step:1,min:5,max:30},
+    {k:"min_200dma_slope",label:"200 DMA Slope >",type:"number",step:0.5}
+  ]},
+  { key:"divergence_slope", label:"Divergence Slope", fields:[
+    {k:"min_200dma_slope",label:"200 DMA Slope >",type:"number",step:0.5},
+    {k:"rsi_check",label:"RSI Check",type:"bool"},
+    {k:"max_rsi",label:"Max RSI",type:"number",step:1,min:30,max:90},
+    {k:"volume_check",label:"Volume Check",type:"bool"},
+    {k:"min_vol_ratio",label:"Min Vol Ratio",type:"number",step:0.1,min:0.5,max:5}
+  ]},
+  { key:"high_dma_angle_3", label:"High DMA Angle (3)", fields:[
+    {k:"dma",label:"DMA Period",type:"select",options:[3,20,200]},
+    {k:"top_n",label:"Top N Stocks",type:"number",step:1,min:5,max:50},
+    {k:"min_200dma_slope",label:"200 DMA Slope >",type:"number",step:0.5}
+  ]},
+  { key:"high_dma_angle_20", label:"High DMA Angle (20)", fields:[
+    {k:"dma",label:"DMA Period",type:"select",options:[3,20,200]},
+    {k:"top_n",label:"Top N Stocks",type:"number",step:1,min:5,max:50},
+    {k:"min_200dma_slope",label:"200 DMA Slope >",type:"number",step:0.5}
+  ]},
+  { key:"high_dma_angle_200", label:"High DMA Angle (200)", fields:[
+    {k:"dma",label:"DMA Period",type:"select",options:[3,20,200]},
+    {k:"top_n",label:"Top N Stocks",type:"number",step:1,min:5,max:50},
+    {k:"min_200dma_slope",label:"200 DMA Slope >",type:"number",step:0.5}
+  ]},
+  { key:"slope_difference", label:"Slope Difference", fields:[
+    {k:"min_diff",label:"Min Slope Diff",type:"number",step:0.5},
+    {k:"min_200dma_slope",label:"200 DMA Slope >",type:"number",step:0.5},
+    {k:"top_n",label:"Top N Stocks",type:"number",step:1,min:5,max:50}
+  ]},
+  { key:"price_crossover_200", label:"Price x 200DMA", fields:[
+    {k:"crossover_type",label:"Crossover Type",type:"select",options:["Price x 200DMA","Price x 100DMA","Price x 20DMA"]},
+    {k:"min_slope",label:"DMA Slope >",type:"number",step:0.5},
+    {k:"lookback_days",label:"Lookback Days",type:"number",step:1,min:1,max:20}
+  ]},
+  { key:"price_crossover_100", label:"Price x 100DMA", fields:[
+    {k:"crossover_type",label:"Crossover Type",type:"select",options:["Price x 200DMA","Price x 100DMA","Price x 20DMA"]},
+    {k:"min_slope",label:"DMA Slope >",type:"number",step:0.5},
+    {k:"lookback_days",label:"Lookback Days",type:"number",step:1,min:1,max:20}
+  ]},
+  { key:"price_crossover_20", label:"Price x 20DMA", fields:[
+    {k:"crossover_type",label:"Crossover Type",type:"select",options:["Price x 200DMA","Price x 100DMA","Price x 20DMA"]},
+    {k:"min_slope",label:"DMA Slope >",type:"number",step:0.5},
+    {k:"lookback_days",label:"Lookback Days",type:"number",step:1,min:1,max:20}
+  ]},
+  { key:"potential_crossover", label:"Potential Crossover", fields:[
+    {k:"proximity_pct",label:"Proximity %",type:"number",step:0.1,min:0.1,max:5},
+    {k:"min_200dma_slope",label:"200 DMA Slope >",type:"number",step:0.5}
+  ]},
+  { key:"volume_shockers", label:"Volume Shockers", fields:[
+    {k:"vol_ratio_threshold",label:"Vol Ratio Threshold",type:"number",step:0.1,min:1,max:10},
+    {k:"min_avg_volume",label:"Min Avg Volume",type:"number",step:10000,min:0},
+    {k:"min_200dma_slope",label:"200 DMA Slope >",type:"number",step:0.5},
+    {k:"sentiment",label:"Sentiment",type:"select",options:["Both","Bullish","Bearish"]}
+  ]},
+  { key:"dma_bottoming", label:"DMA Bottoming", fields:[
+    {k:"dma",label:"DMA Period",type:"select",options:[3,20,200]},
+    {k:"min_angle",label:"Min Current Angle",type:"number",step:0.5},
+    {k:"max_angle",label:"Max Current Angle",type:"number",step:0.5},
+    {k:"prev_max_angle",label:"Max Prev Angle",type:"number",step:0.5}
+  ]},
+  { key:"macd_crossover", label:"MACD Crossover", fields:[
+    {k:"min_200dma_slope",label:"200 DMA Slope >",type:"number",step:0.5},
+    {k:"lookback_days",label:"Lookback Days",type:"number",step:1,min:1,max:10}
+  ]},
+  { key:"slope_crossover", label:"Slope Crossover", fields:[
+    {k:"lookback_days",label:"Lookback Days",type:"number",step:1,min:1,max:10},
+    {k:"min_20dma_slope",label:"Min 20DMA Slope",type:"number",step:0.5}
+  ]},
+  { key:"relative_strength", label:"Relative Strength", fields:[
+    {k:"min_rs_slope",label:"Min RS Slope",type:"number",step:1},
+    {k:"min_200dma_slope",label:"200 DMA Slope >",type:"number",step:0.5},
+    {k:"top_n",label:"Max Results (0=all)",type:"number",step:1,min:0,max:100}
+  ]},
+  { key:"strong_adx", label:"Strong ADX", fields:[
+    {k:"adx_threshold",label:"Min ADX",type:"number",step:1,min:0},
+    {k:"buy_side_only",label:"Buy Side Only",type:"bool"},
+    {k:"crossover_only",label:"Crossover Only",type:"bool"},
+    {k:"top_n",label:"Max Results (0=all)",type:"number",step:1,min:0,max:100}
+  ]}
+];
+
+// Default config
+const DEFAULTS = {"low_rsi":{"enabled":true,"rsi_threshold":30,"min_200dma_slope":5,"rsi_turning_up":false,"volume_spike":false},"low_beta":{"enabled":true,"beta_percentile":0.25,"min_200dma_slope":5,"near_200dma":false,"rsi_turning_up":false},"narrow_band":{"enabled":true,"band_pct":0.05,"lookback_days":10,"min_200dma_slope":5},"divergence_slope":{"enabled":true,"min_200dma_slope":5,"rsi_check":false,"max_rsi":70,"volume_check":false,"min_vol_ratio":1},"high_dma_angle_3":{"enabled":true,"dma":3,"top_n":10,"min_200dma_slope":5},"high_dma_angle_20":{"enabled":true,"dma":20,"top_n":10,"min_200dma_slope":5},"high_dma_angle_200":{"enabled":true,"dma":200,"top_n":10,"min_200dma_slope":5},"slope_difference":{"enabled":true,"min_diff":0,"min_200dma_slope":0,"top_n":20},"price_crossover_200":{"enabled":true,"crossover_type":"Price x 200DMA","min_slope":5,"lookback_days":5},"price_crossover_100":{"enabled":true,"crossover_type":"Price x 100DMA","min_slope":5,"lookback_days":5},"price_crossover_20":{"enabled":true,"crossover_type":"Price x 20DMA","min_slope":5,"lookback_days":5},"potential_crossover":{"enabled":true,"proximity_pct":2,"min_200dma_slope":5},"volume_shockers":{"enabled":true,"vol_ratio_threshold":2,"min_avg_volume":10000,"min_200dma_slope":5,"sentiment":"Both"},"dma_bottoming":{"enabled":true,"dma":20,"min_angle":-2,"max_angle":10,"prev_max_angle":0},"macd_crossover":{"enabled":true,"min_200dma_slope":5,"lookback_days":3},"slope_crossover":{"enabled":true,"lookback_days":3,"min_20dma_slope":0},"relative_strength":{"enabled":true,"min_rs_slope":0,"min_200dma_slope":5,"top_n":20},"strong_adx":{"enabled":true,"adx_threshold":25,"buy_side_only":true,"crossover_only":false,"top_n":20}};
+
+let config = JSON.parse(JSON.stringify(DEFAULTS));
+
+function render() {
+  const container = document.getElementById('cards');
+  container.innerHTML = '';
+  SCHEMA.forEach(s => {
+    const c = config[s.key] || {};
+    const enabled = c.enabled !== false;
+    const card = document.createElement('div');
+    card.className = 'card' + (enabled ? '' : ' disabled');
+    card.innerHTML = `
+      <div class="card-header">
+        <h3>${s.label}</h3>
+        <label class="toggle">
+          <input type="checkbox" ${enabled?'checked':''} onchange="toggleFilter('${s.key}',this.checked)">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="card-body">
+        ${s.fields.map(f => renderField(s.key, f, c)).join('')}
+      </div>`;
+    container.appendChild(card);
+  });
+}
+
+function renderField(sKey, f, c) {
+  const val = c[f.k] !== undefined ? c[f.k] : '';
+  const id = `${sKey}__${f.k}`;
+  let input = '';
+  if (f.type === 'number') {
+    input = `<input type="number" id="${id}" value="${val}" step="${f.step||1}" ${f.min!==undefined?'min="'+f.min+'"':''} ${f.max!==undefined?'max="'+f.max+'"':''} onchange="updateVal('${sKey}','${f.k}',this.value,'number')">`;
+  } else if (f.type === 'bool') {
+    input = `<label class="toggle"><input type="checkbox" id="${id}" ${val?'checked':''} onchange="updateVal('${sKey}','${f.k}',this.checked,'bool')"><span class="slider"></span></label>`;
+  } else if (f.type === 'select') {
+    input = `<select id="${id}" onchange="updateVal('${sKey}','${f.k}',this.value,'select')">${f.options.map(o => `<option value="${o}" ${o==val?'selected':''}>${o}</option>`).join('')}</select>`;
+  }
+  return `<div class="field"><label>${f.label}</label>${input}</div>`;
+}
+
+function toggleFilter(key, checked) {
+  config[key].enabled = checked;
+  render();
+}
+
+function updateVal(sKey, fKey, val, type) {
+  if (type === 'number') config[sKey][fKey] = parseFloat(val);
+  else if (type === 'bool') config[sKey][fKey] = val;
+  else config[sKey][fKey] = val;
+}
+
+function resetToDefaults() {
+  config = JSON.parse(JSON.stringify(DEFAULTS));
+  render();
+  showToast('Reset to defaults');
+}
+
+function saveJSON() {
+  // Clean out internal keys starting with _
+  const clean = JSON.parse(JSON.stringify(config));
+  const blob = new Blob([JSON.stringify(clean, null, 4)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'filter_config.json';
+  a.click();
+  showToast('Saved filter_config.json');
+}
+
+function copyJSON() {
+  const clean = JSON.parse(JSON.stringify(config));
+  navigator.clipboard.writeText(JSON.stringify(clean, null, 4)).then(() => showToast('Copied to clipboard'));
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// Load from file
+document.getElementById('fileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const loaded = JSON.parse(ev.target.result);
+      // Merge with defaults so new fields aren't missing
+      SCHEMA.forEach(s => {
+        if (loaded[s.key]) {
+          config[s.key] = {...(DEFAULTS[s.key]||{}), ...loaded[s.key]};
+        }
+      });
+      render();
+      showToast('Loaded ' + file.name);
+    } catch(err) { alert('Invalid JSON: ' + err.message); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// Initial render
+render();
+</script>
+</body>
+</html>

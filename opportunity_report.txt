@@ -1,0 +1,267 @@
+======================================================================
+  STOCK OPPORTUNITY ANALYSIS REPORT
+  Data Date: 2026-05-12
+  Generated: 2026-05-12 17:27
+======================================================================
+
+Filters Run: 17
+Unique Stocks Found: 102
+
+Filter Results Summary:
+  Price x 20DMA                    21 stocks
+  Slope Difference                 20 stocks
+  Relative Strength                20 stocks
+  Strong ADX                       20 stocks
+  Low RSI                          19 stocks
+  Narrow Band                      19 stocks
+  Low Beta                         18 stocks
+  Divergence Slope                 10 stocks
+  High DMA Angle (3)               10 stocks
+  High DMA Angle (20)              10 stocks
+  High DMA Angle (200)             10 stocks
+  Price x 100DMA                    5 stocks
+  Volume Shockers                   5 stocks
+  MACD Crossover                    4 stocks
+  Heikin Ashi Turn                  4 stocks
+  Potential Crossover               2 stocks
+  Slope Crossover                   2 stocks
+
+======================================================================
+  TOP 15 OPPORTUNITIES (Ranked by Convergence Score)
+======================================================================
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #1  TATSILV  []
+  Tech Data:    Price: 25.58 | RSI: 64.7 | Volx: 2.2 | vs200DMA: 35.9%
+  Total Score: 17 (Tech: 17, Fund: 0)  |  Filters: 8  |  Categories: 5
+  Type: STRONG REVERSAL
+  Signals: Low Beta | Divergence Slope | High DMA Angle (200) | Price x 100DMA | Price x 20DMA | Volume Shockers | Slope Crossover | Relative Strength
+  Category Coverage: Momentum, Oversold, Trend Reversal, Trend Strength, Volume
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #2  HINDCOPPER  [Basic Materials]
+  Fundamentals: MktCap: 54559.0Cr | PE: 82.72727 | D/E: 4.776
+  Tech Data:    Price: 564.2 | RSI: 53.1 | Volx: 2.4 | vs200DMA: 35.0%
+  Total Score: 12 (Tech: 11, Fund: 1)  |  Filters: 5  |  Categories: 4
+  Type: BOUNCE PLAY
+  Signals: Divergence Slope | High DMA Angle (200) | Price x 20DMA | Volume Shockers | Relative Strength
+  Category Coverage: Momentum, Oversold, Trend Strength, Volume
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #4  YESBANK  [Financial Services]
+  Fundamentals: MktCap: 69236.0Cr | PE: 19.696428 | ROE: 7.09%
+  Tech Data:    Price: 22.06 | RSI: 71.2 | Volx: 1.1 | vs200DMA: 5.2%
+  Total Score: 12 (Tech: 9, Fund: 3)  |  Filters: 4  |  Categories: 2
+  Type: STRONG REVERSAL
+  Signals: Divergence Slope | Slope Difference | Price x 100DMA | Potential Crossover
+  Category Coverage: Momentum, Trend Reversal
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #5  OIL  [Energy]
+  Fundamentals: MktCap: 79858.0Cr | PE: 13.698382 | D/E: 58.174
+  Tech Data:    Price: 490.95 | RSI: 59.0 | Volx: 5.1 | vs200DMA: 13.5%
+  Total Score: 12 (Tech: 9, Fund: 3)  |  Filters: 3  |  Categories: 2
+  Type: BREAKOUT
+  Signals: Price x 100DMA | Volume Shockers | Heikin Ashi Turn
+  Category Coverage: Trend Reversal, Volume
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #7  BANKINDIA  [Financial Services]
+  Fundamentals: MktCap: 63801.0Cr | PE: 6.1899295 | ROE: 12.05%
+  Tech Data:    Price: 140.14 | RSI: 27.7 | Volx: 0.8 | vs200DMA: 0.4%
+  Total Score: 11 (Tech: 8, Fund: 3)  |  Filters: 3  |  Categories: 3
+  Type: BREAKOUT SETUP
+  Signals: Low RSI | Narrow Band | MACD Crossover
+  Category Coverage: Consolidation, Momentum, Oversold
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #13  MCX  [Financial Services]
+  Fundamentals: MktCap: 80348.0Cr | PE: 60.384468 | ROE: 37.88% | D/E: 0.113
+  Tech Data:    Price: 3156.9 | RSI: 79.4 | Volx: 1.6 | vs200DMA: 49.3%
+  Total Score: 11 (Tech: 7, Fund: 4)  |  Filters: 4  |  Categories: 2
+  Type: MOMENTUM RIDE
+  Signals: Divergence Slope | High DMA Angle (3) | High DMA Angle (200) | Relative Strength
+  Category Coverage: Momentum, Trend Strength
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #15  SHRIRAMFIN  [Financial Services]
+  Fundamentals: MktCap: 218919.0Cr | PE: 17.460123 | ROE: 16.38% | D/E: 274.993
+  Tech Data:    Price: 930.45 | RSI: 29.8 | Volx: 1.4 | vs200DMA: 10.5%
+  Total Score: 11 (Tech: 6, Fund: 5)  |  Filters: 2  |  Categories: 2
+  Type: EARLY REVERSAL
+  Signals: Low RSI | Price x 100DMA
+  Category Coverage: Oversold, Trend Reversal
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #30  NATIONALUM  [Basic Materials]
+  Fundamentals: MktCap: 72372.0Cr | PE: 11.780269 | ROE: 29.42% | D/E: 0.277
+  Tech Data:    Price: 394.05 | RSI: 27.0 | Volx: 0.8 | vs200DMA: 35.3%
+  Total Score: 11 (Tech: 5, Fund: 6)  |  Filters: 2  |  Categories: 2
+  Type: BOUNCE PLAY
+  Signals: Low RSI | High DMA Angle (200)
+  Category Coverage: Oversold, Trend Strength
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #6  TATACONSUM  [Consumer Defensive]
+  Fundamentals: MktCap: 124009.0Cr | PE: 80.16634 | ROE: 6.94% | D/E: 12.159
+  Tech Data:    Price: 1253.0 | RSI: 65.0 | Volx: 1.3 | vs200DMA: 10.8%
+  Total Score: 10 (Tech: 9, Fund: 1)  |  Filters: 5  |  Categories: 1
+  Type: MOMENTUM
+  Signals: Low Beta | Divergence Slope | High DMA Angle (3) | Slope Difference | MACD Crossover
+  Category Coverage: Momentum
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #8  ONGC  [Energy]
+  Fundamentals: MktCap: 370489.0Cr | PE: 9.738757 | D/E: 43.805
+  Tech Data:    Price: 294.5 | RSI: 58.4 | Volx: 3.0 | vs200DMA: 18.9%
+  Total Score: 10 (Tech: 8, Fund: 2)  |  Filters: 3  |  Categories: 3
+  Type: BREAKOUT
+  Signals: Volume Shockers | Strong ADX | Heikin Ashi Turn
+  Category Coverage: Trend Reversal, Trend Strength, Volume
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #32  COALINDIA  [Energy]
+  Fundamentals: MktCap: 285365.0Cr | PE: 9.180214 | ROE: 28.12% | D/E: 11.629
+  Tech Data:    Price: 463.05 | RSI: 62.0 | Volx: 0.6 | vs200DMA: 15.3%
+  Total Score: 10 (Tech: 5, Fund: 5)  |  Filters: 2  |  Categories: 2
+  Type: STRONG REVERSAL
+  Signals: Slope Crossover | Heikin Ashi Turn
+  Category Coverage: Momentum, Trend Reversal
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #33  HINDZINC  [Basic Materials]
+  Fundamentals: MktCap: 271223.0Cr | PE: 19.62397 | ROE: 76.94% | D/E: 39.034
+  Tech Data:    Price: 641.9 | RSI: 67.6 | Volx: 1.8 | vs200DMA: 22.7%
+  Total Score: 10 (Tech: 5, Fund: 5)  |  Filters: 2  |  Categories: 2
+  Type: EARLY REVERSAL
+  Signals: Relative Strength | Heikin Ashi Turn
+  Category Coverage: Trend Reversal, Trend Strength
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #3  IDEA  [Communication Services]
+  Fundamentals: MktCap: 128820.0Cr
+  Tech Data:    Price: 11.89 | RSI: 85.3 | Volx: 1.9 | vs200DMA: 25.4%
+  Total Score: 9 (Tech: 9, Fund: 0)  |  Filters: 5  |  Categories: 2
+  Type: MOMENTUM RIDE
+  Signals: Divergence Slope | High DMA Angle (3) | High DMA Angle (20) | Relative Strength | Strong ADX
+  Category Coverage: Momentum, Trend Strength
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #9  JBCHEPHARM  [Healthcare]
+  Fundamentals: MktCap: 34284.0Cr | PE: 48.092342 | D/E: 1.075
+  Tech Data:    Price: 2135.3 | RSI: 71.9 | Volx: 2.5 | vs200DMA: 16.1%
+  Total Score: 9 (Tech: 8, Fund: 1)  |  Filters: 4  |  Categories: 2
+  Type: TRENDING
+  Signals: Low Beta | Volume Shockers | Relative Strength | Strong ADX
+  Category Coverage: Trend Strength, Volume
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  #10  ASIANPAINT  [Basic Materials]
+  Fundamentals: MktCap: 240188.0Cr | PE: 62.590557 | D/E: 17.609
+  Tech Data:    Price: 2505.5 | RSI: 42.9 | Volx: 0.6 | vs200DMA: -0.8%
+  Total Score: 9 (Tech: 8, Fund: 1)  |  Filters: 4  |  Categories: 2
+  Type: STRONG REVERSAL
+  Signals: Low Beta | Slope Difference | Potential Crossover | MACD Crossover
+  Category Coverage: Momentum, Trend Reversal
+
+======================================================================
+  CATEGORY ANALYSIS
+======================================================================
+
+  Trend Reversal (9 stocks):
+    TATSILV               Score: 17  (8 filters)
+    YESBANK               Score:  9  (4 filters)
+    OIL                   Score:  9  (3 filters)
+    SHRIRAMFIN            Score:  6  (2 filters)
+    ONGC                  Score:  8  (3 filters)
+
+  Momentum (30 stocks):
+    TATSILV               Score: 17  (8 filters)
+    HINDCOPPER            Score: 11  (5 filters)
+    YESBANK               Score:  9  (4 filters)
+    BANKINDIA             Score:  8  (3 filters)
+    MCX                   Score:  7  (4 filters)
+
+  Oversold (40 stocks):
+    TATSILV               Score: 17  (8 filters)
+    HINDCOPPER            Score: 11  (5 filters)
+    BANKINDIA             Score:  8  (3 filters)
+    SHRIRAMFIN            Score:  6  (2 filters)
+    NATIONALUM            Score:  5  (2 filters)
+
+  Trend Strength (37 stocks):
+    TATSILV               Score: 17  (8 filters)
+    HINDCOPPER            Score: 11  (5 filters)
+    MCX                   Score:  7  (4 filters)
+    NATIONALUM            Score:  5  (2 filters)
+    ONGC                  Score:  8  (3 filters)
+
+  Volume (5 stocks):
+    TATSILV               Score: 17  (8 filters)
+    HINDCOPPER            Score: 11  (5 filters)
+    OIL                   Score:  9  (3 filters)
+    ONGC                  Score:  8  (3 filters)
+    JBCHEPHARM            Score:  8  (4 filters)
+
+  Consolidation (19 stocks):
+    BANKINDIA             Score:  8  (3 filters)
+    UNIONBANK             Score:  5  (2 filters)
+    HINDALCO              Score:  6  (3 filters)
+    AXISBANK              Score:  5  (2 filters)
+    BANKBARODA            Score:  5  (2 filters)
+
+======================================================================
+  CONVERGENCE ALERTS (3+ filter matches)
+======================================================================
+
+  TATSILV          [STRONG REVERSAL   ]  Score: 17  |  Low Beta | Divergence Slope | High DMA Angle (200) | Price x 100DMA | Price x 20DMA | Volume Shockers | Slope Crossover | Relative Strength
+
+  HINDCOPPER       [BOUNCE PLAY       ]  Score: 11  |  Divergence Slope | High DMA Angle (200) | Price x 20DMA | Volume Shockers | Relative Strength
+
+  YESBANK          [STRONG REVERSAL   ]  Score:  9  |  Divergence Slope | Slope Difference | Price x 100DMA | Potential Crossover
+
+  OIL              [BREAKOUT          ]  Score:  9  |  Price x 100DMA | Volume Shockers | Heikin Ashi Turn
+
+  BANKINDIA        [BREAKOUT SETUP    ]  Score:  8  |  Low RSI | Narrow Band | MACD Crossover
+
+  MCX              [MOMENTUM RIDE     ]  Score:  7  |  Divergence Slope | High DMA Angle (3) | High DMA Angle (200) | Relative Strength
+
+  TATACONSUM       [MOMENTUM          ]  Score:  9  |  Low Beta | Divergence Slope | High DMA Angle (3) | Slope Difference | MACD Crossover
+
+  ONGC             [BREAKOUT          ]  Score:  8  |  Volume Shockers | Strong ADX | Heikin Ashi Turn
+
+  IDEA             [MOMENTUM RIDE     ]  Score:  9  |  Divergence Slope | High DMA Angle (3) | High DMA Angle (20) | Relative Strength | Strong ADX
+
+  JBCHEPHARM       [TRENDING          ]  Score:  8  |  Low Beta | Volume Shockers | Relative Strength | Strong ADX
+
+  ASIANPAINT       [STRONG REVERSAL   ]  Score:  8  |  Low Beta | Slope Difference | Potential Crossover | MACD Crossover
+
+  ADANIGREEN       [MOMENTUM RIDE     ]  Score:  8  |  High DMA Angle (20) | Slope Difference | Relative Strength | Strong ADX
+
+  BHEL             [TRENDING          ]  Score:  8  |  High DMA Angle (20) | High DMA Angle (200) | Relative Strength | Strong ADX
+
+  ADANIPOWER       [TRENDING          ]  Score:  6  |  High DMA Angle (20) | High DMA Angle (200) | Relative Strength
+
+  HINDALCO         [TRENDING          ]  Score:  6  |  Narrow Band | Relative Strength | Strong ADX
+
+  BSE              [TRENDING          ]  Score:  6  |  High DMA Angle (200) | Relative Strength | Strong ADX
+
+  POLYCAB          [MOMENTUM RIDE     ]  Score:  5  |  Divergence Slope | High DMA Angle (3) | Strong ADX
+
+  M&MFIN           [MOMENTUM RIDE     ]  Score:  5  |  Divergence Slope | High DMA Angle (3) | Strong ADX
+
+  METROPOLIS       [MOMENTUM          ]  Score:  6  |  Low Beta | Divergence Slope | High DMA Angle (3) | Slope Difference
+
+  POWERINDIA       [TRENDING          ]  Score:  6  |  High DMA Angle (200) | Relative Strength | Strong ADX
+
+  FCL              [MOMENTUM RIDE     ]  Score:  5  |  High DMA Angle (3) | High DMA Angle (20) | Slope Difference
+
+  ALKEM            [OVERSOLD          ]  Score:  5  |  Low Beta | Narrow Band | Price x 20DMA
+
+  STARHEALTH       [TRENDING          ]  Score:  5  |  Low Beta | Narrow Band | Strong ADX
+
+  NYKAA            [TRENDING          ]  Score:  5  |  Low Beta | Narrow Band | Strong ADX
+
+======================================================================
+  END OF REPORT
+======================================================================

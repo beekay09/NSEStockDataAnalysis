@@ -1,0 +1,125 @@
+{
+    "_description": "Filter configuration for run_filters.py. Set 'enabled' to false to skip a filter.",
+    "low_rsi": {
+        "enabled": true,
+        "rsi_threshold": 30,
+        "min_200dma_slope": 5,
+        "rsi_turning_up": false,
+        "volume_spike": false
+    },
+    "low_beta": {
+        "enabled": true,
+        "beta_percentile": 0.25,
+        "min_200dma_slope": 5,
+        "near_200dma": false,
+        "rsi_turning_up": false
+    },
+    "narrow_band": {
+        "enabled": true,
+        "band_pct": 0.05,
+        "lookback_days": 10,
+        "min_200dma_slope": 5
+    },
+    "divergence_slope": {
+        "enabled": true,
+        "min_200dma_slope": 5,
+        "rsi_check": false,
+        "max_rsi": 70,
+        "volume_check": false,
+        "min_vol_ratio": 1.0
+    },
+    "high_dma_angle_3": {
+        "enabled": true,
+        "dma": 3,
+        "top_n": 10,
+        "min_200dma_slope": 5
+    },
+    "high_dma_angle_20": {
+        "enabled": true,
+        "dma": 20,
+        "top_n": 10,
+        "min_200dma_slope": 5
+    },
+    "high_dma_angle_200": {
+        "enabled": true,
+        "dma": 200,
+        "top_n": 10,
+        "min_200dma_slope": 5
+    },
+    "slope_difference": {
+        "enabled": true,
+        "min_diff": 0.0,
+        "min_200dma_slope": 0.0,
+        "top_n": 20
+    },
+    "price_crossover_200": {
+        "enabled": true,
+        "crossover_type": "Price x 200DMA",
+        "min_slope": 10,
+        "lookback_days": 3
+    },
+    "price_crossover_100": {
+        "enabled": true,
+        "crossover_type": "Price x 100DMA",
+        "min_slope": 5,
+        "lookback_days": 5
+    },
+    "price_crossover_20": {
+        "enabled": true,
+        "crossover_type": "Price x 20DMA",
+        "min_slope": 5,
+        "lookback_days": 5
+    },
+    "potential_crossover": {
+        "enabled": true,
+        "proximity_pct": 2.0,
+        "min_200dma_slope": 5
+    },
+    "volume_shockers": {
+        "enabled": true,
+        "vol_ratio_threshold": 2.0,
+        "min_avg_volume": 10000,
+        "min_200dma_slope": 5,
+        "sentiment": "Both",
+        "_sentiment_options": [
+            "Both",
+            "Bullish",
+            "Bearish"
+        ]
+    },
+    "dma_bottoming": {
+        "enabled": true,
+        "dma": 20,
+        "min_angle": -2.0,
+        "max_angle": 10.0,
+        "prev_max_angle": 0.0
+    },
+    "macd_crossover": {
+        "enabled": true,
+        "min_200dma_slope": 5,
+        "lookback_days": 3
+    },
+    "slope_crossover": {
+        "enabled": true,
+        "lookback_days": 3,
+        "min_20dma_slope": 0.0
+    },
+    "relative_strength": {
+        "enabled": true,
+        "min_rs_slope": 0,
+        "min_200dma_slope": 5,
+        "top_n": 20
+    },
+    "strong_adx": {
+        "enabled": true,
+        "adx_threshold": 25,
+        "buy_side_only": true,
+        "crossover_only": false,
+        "top_n": 20
+    },
+    "heikin_ashi_turn": {
+        "enabled": true,
+        "min_200dma_slope": 0,
+        "top_n": 200
+    }
+}

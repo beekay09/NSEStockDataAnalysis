@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import pandas_ta as ta
 import os
 import time
 import datetime
@@ -12,21 +13,10 @@ REQUIRED_FILE = "nse_stock_data.csv"
 OUTPUT_FILE = "nse_stock_data_with_metrics_v2.csv"
 FRESHNESS_HOURS = 8
 
-def calculate_rsi(series, period=14):
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period, min_periods=1).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period, min_periods=1).mean()
-    
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-
 def calculate_angle(series, window=1):
     # Angle calculation: degrees(arctan(pct_change * 100))
     # This treats a 1% change over the window as a 45-degree angle.
     # User formula: np.degrees(np.atan(data_series.pct_change(periods=window) * 100))
-    #change = series.pct_change(periods=window) * 100
-    #angle = np.degrees(np.arctan(change))
     angle = np.degrees(np.atan(series.pct_change(periods=window) * 100))
     return angle
 
@@ -91,29 +81,37 @@ def main():
     df['Date'] = pd.to_datetime(df['Date'])
     df.sort_values(by=['Ticker', 'Date'], inplace=True)
     
-    print("Calculating metrics...")
+    print("Calculating metrics using pandas_ta...")
 
     # 3. Calculate Metrics (Group by Ticker to treat each stock independently)
-    # We use transform when possible for index safety and apply for multi-column.
-    # We apply shift(-1) to "move up" the data as requested by the user.
+
+    # RSI using pandas_ta
+    df['RSI_14'] = df.groupby('Ticker')['Close'].transform(lambda x: ta.rsi(x, length=14))
     
-    # RSI
-    df['RSI_14'] = df.groupby('Ticker')['Close'].transform(lambda x: calculate_rsi(x))
-    
-    # DMAs and EMAs
+    # DMAs (SMA) using pandas_ta
     for window in [3, 20, 100, 200]:
-        df[f'{window}DMA'] = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(window, min_periods=1).mean())
-        #df[f'{window}EMA'] = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=window, adjust=False, min_periods=1).mean())
+        df[f'{window}DMA'] = df.groupby('Ticker')['Close'].transform(lambda x: ta.sma(x, length=window))
         
-    # VWMAs (Requires multi-column, so we use apply + explicit alignment)
+    # VWMAs using pandas_ta
     for window in [3, 20, 100, 200]:
         name = f'{window}VWMA'
-        def compute_group_vwma(g):
-            vwma = (g['Close'] * g['Volume']).rolling(window, min_periods=1).sum() / g['Volume'].rolling(window, min_periods=1).sum()
+        def compute_group_vwma(g, w=window):
+            result = ta.vwma(g['Close'], g['Volume'], length=w)
+            if result is not None:
+                return result
+            # Fallback to manual calculation
+            vwma = (g['Close'] * g['Volume']).rolling(w, min_periods=1).sum() / g['Volume'].rolling(w, min_periods=1).sum()
             return vwma
         
         # Explicitly aligning the result back to the dataframe
         df[name] = df.groupby('Ticker', group_keys=False).apply(compute_group_vwma)
+
+    # 4. Calculate Heikin Ashi
+    print("Calculating Heikin Ashi...")
+    df['HA_Close'] = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
+    initial_ha_open = (df['Open'] + df['Close']) / 2
+    x = df.groupby('Ticker')['HA_Close'].shift(1).fillna(initial_ha_open)
+    df['HA_Open'] = x.groupby(df['Ticker']).transform(lambda s: s.ewm(alpha=0.5, adjust=False).mean())
 
     # 4. Calculate Angles for all metrics
     metrics_cols = [f'{w}DMA' for w in [3, 20, 100, 200]] + \

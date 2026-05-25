@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import pandas_ta as ta
 
 def calculate_beta_metrics(df):
     """Calculate Beta for each stock relative to the equal-weighted market index."""
@@ -27,69 +28,102 @@ def calculate_beta_metrics(df):
     return beta_map
 
 def calculate_heikin_ashi(df):
-    """Calculate Heikin Ashi candles from a DataFrame with Open, High, Low, Close."""
+    """Calculate Heikin Ashi candles using pandas_ta."""
+    # pandas_ta has a ha() method, but it requires the DataFrame to have
+    # open/high/low/close columns. We'll use it via the DataFrame accessor.
     ha_df = df.copy()
     
-    # HA Close
-    ha_df['Close'] = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
+    # pandas_ta expects lowercase column names for its accessor
+    temp_df = df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close'})
+    ha_result = temp_df.ta.ha()
     
-    # HA Open
-    # Initialize with the first row's data
-    ha_df['Open'] = 0.0
-    # We need to iterate because HA Open depends on previous HA Open
-    # Using a list for speed
-    open_prices = df['Open'].values
-    close_prices = df['Close'].values
-    ha_open = [ (open_prices[0] + close_prices[0]) / 2 ]
-    
-    ha_close_values = ha_df['Close'].values
-    
-    for i in range(1, len(df)):
-        prev_open = ha_open[-1]
-        prev_close = ha_close_values[i-1]
-        current_open = (prev_open + prev_close) / 2
-        ha_open.append(current_open)
-        
-    ha_df['Open'] = ha_open
-    
-    # HA High and Low
-    ha_df['High'] = ha_df[['High', 'Open', 'Close']].max(axis=1)
-    ha_df['Low'] = ha_df[['Low', 'Open', 'Close']].min(axis=1)
+    if ha_result is not None and not ha_result.empty:
+        # Column names vary by pandas_ta version, so find them dynamically
+        ha_cols = ha_result.columns.tolist()
+        open_col = [c for c in ha_cols if 'open' in c.lower()][0]
+        high_col = [c for c in ha_cols if 'high' in c.lower()][0]
+        low_col = [c for c in ha_cols if 'low' in c.lower()][0]
+        close_col = [c for c in ha_cols if 'close' in c.lower()][0]
+        ha_df['Open'] = ha_result[open_col].values
+        ha_df['High'] = ha_result[high_col].values
+        ha_df['Low'] = ha_result[low_col].values
+        ha_df['Close'] = ha_result[close_col].values
+    else:
+        # Fallback to manual calculation if pandas_ta ha() fails
+        ha_df['Close'] = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
+        ha_df['Open'] = 0.0
+        open_prices = df['Open'].values
+        close_prices = df['Close'].values
+        ha_open = [ (open_prices[0] + close_prices[0]) / 2 ]
+        ha_close_values = ha_df['Close'].values
+        for i in range(1, len(df)):
+            prev_open = ha_open[-1]
+            prev_close = ha_close_values[i-1]
+            current_open = (prev_open + prev_close) / 2
+            ha_open.append(current_open)
+        ha_df['Open'] = ha_open
+        ha_df['High'] = ha_df[['High', 'Open', 'Close']].max(axis=1)
+        ha_df['Low'] = ha_df[['Low', 'Open', 'Close']].min(axis=1)
     
     return ha_df
 
 def calculate_bollinger_bands(df, window=20, num_std=2):
-    """Calculate Bollinger Bands."""
+    """Calculate Bollinger Bands using pandas_ta."""
     bb_df = df.copy()
-    bb_df['SMA'] = bb_df['Close'].rolling(window=window).mean()
-    bb_df['STD'] = bb_df['Close'].rolling(window=window).std()
-    bb_df['Upper'] = bb_df['SMA'] + (bb_df['STD'] * num_std)
-    bb_df['Lower'] = bb_df['SMA'] - (bb_df['STD'] * num_std)
+    
+    # pandas_ta bbands returns: BBL, BBM, BBU, BBB, BBP
+    bb_result = ta.bbands(bb_df['Close'], length=window, std=num_std)
+    
+    if bb_result is not None and not bb_result.empty:
+        # Column names vary by pandas_ta version, so match by prefix
+        bbm_col = [c for c in bb_result.columns if c.startswith('BBM_')][0]
+        bbu_col = [c for c in bb_result.columns if c.startswith('BBU_')][0]
+        bbl_col = [c for c in bb_result.columns if c.startswith('BBL_')][0]
+        bb_df['SMA'] = bb_result[bbm_col].values
+        bb_df['Upper'] = bb_result[bbu_col].values
+        bb_df['Lower'] = bb_result[bbl_col].values
+    else:
+        # Fallback
+        bb_df['SMA'] = bb_df['Close'].rolling(window=window).mean()
+        bb_df['STD'] = bb_df['Close'].rolling(window=window).std()
+        bb_df['Upper'] = bb_df['SMA'] + (bb_df['STD'] * num_std)
+        bb_df['Lower'] = bb_df['SMA'] - (bb_df['STD'] * num_std)
+    
     return bb_df
 
 def calculate_volume_profile(df, bins=50):
-    """Calculate Volume Profile."""
-    # Use Close price for binning
+    """Calculate Volume Profile. (No pandas_ta equivalent — custom logic retained.)"""
     price = df['Close']
     volume = df['Volume']
     
-    # Create bins
     hist, bin_edges = np.histogram(price, bins=bins, weights=volume)
-    
-    # Center of bins
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
     
     vp_df = pd.DataFrame({'Price': bin_centers, 'Volume': hist})
     return vp_df
 
 def calculate_macd(df, fast=12, slow=26, signal=9):
-    """Calculate MACD, Signal Line, and Histogram."""
+    """Calculate MACD, Signal Line, and Histogram using pandas_ta."""
     macd_df = df.copy()
-    macd_df['EMA_12'] = macd_df['Close'].ewm(span=fast, adjust=False, min_periods=1).mean()
-    macd_df['EMA_26'] = macd_df['Close'].ewm(span=slow, adjust=False, min_periods=1).mean()
-    macd_df['MACD'] = macd_df['EMA_12'] - macd_df['EMA_26']
-    macd_df['Signal'] = macd_df['MACD'].ewm(span=signal, adjust=False, min_periods=1).mean()
-    macd_df['Hist'] = macd_df['MACD'] - macd_df['Signal']
+    
+    macd_result = ta.macd(macd_df['Close'], fast=fast, slow=slow, signal=signal)
+    
+    if macd_result is not None and not macd_result.empty:
+        # Column names vary by pandas_ta version, so match by prefix
+        macd_col = [c for c in macd_result.columns if c.startswith('MACD_')][0]
+        signal_col = [c for c in macd_result.columns if c.startswith('MACDs_')][0]
+        hist_col = [c for c in macd_result.columns if c.startswith('MACDh_')][0]
+        macd_df['MACD'] = macd_result[macd_col].values
+        macd_df['Signal'] = macd_result[signal_col].values
+        macd_df['Hist'] = macd_result[hist_col].values
+    else:
+        # Fallback
+        macd_df['EMA_12'] = macd_df['Close'].ewm(span=fast, adjust=False, min_periods=1).mean()
+        macd_df['EMA_26'] = macd_df['Close'].ewm(span=slow, adjust=False, min_periods=1).mean()
+        macd_df['MACD'] = macd_df['EMA_12'] - macd_df['EMA_26']
+        macd_df['Signal'] = macd_df['MACD'].ewm(span=signal, adjust=False, min_periods=1).mean()
+        macd_df['Hist'] = macd_df['MACD'] - macd_df['Signal']
+    
     return macd_df
 
 def calculate_relative_strength(stock_df, benchmark_df, window=50):
@@ -108,13 +142,9 @@ def calculate_relative_strength(stock_df, benchmark_df, window=50):
     # Calculate Ratio
     combined['RS_Ratio'] = (combined['Close_Stock'] / combined['Close_Bench']) * 100
     
-    # Calculate RS Slope (Momentum of RS)
-    # We use the same slope logic: 100-day rolling slope of the RS Ratio?
-    # Or just current slope of line. Let's stick to our project's standard 200DMA/20DMA Slope logic.
-    # For RS, a simplified 20-day slope of the Ratio is a good "Strength" indicator.
-    
-    # Calculate RS_SMA (e.g. 50 period)
-    combined['RS_MA'] = combined['RS_Ratio'].rolling(window=window).mean()
+    # Calculate RS_SMA using pandas_ta
+    rs_ma = ta.sma(combined['RS_Ratio'], length=window)
+    combined['RS_MA'] = rs_ma.values if rs_ma is not None else combined['RS_Ratio'].rolling(window=window).mean()
     
     # Calculate Slope
     combined['RS_Slope'] = np.degrees(np.arctan(combined['RS_Ratio'].pct_change(20).fillna(0) * 100))
@@ -123,61 +153,42 @@ def calculate_relative_strength(stock_df, benchmark_df, window=50):
     combined = combined.reset_index()
     return combined
 
-def calculate_supertrend(df, period=10, multiplier=3):
-    """
-    Calculate Supertrend Indicator.
-    Returns DataFrame with 'Supertrend', 'Direction' (1=Up, -1=Down).
-    """
-    st_df = df.copy()
-    
-    # Calculate TR (True Range)
-    st_df['H-L'] = st_df['High'] - st_df['Low']
-    st_df['H-PC'] = abs(st_df['High'] - st_df['Close'].shift(1))
-    st_df['L-PC'] = abs(st_df['Low'] - st_df['Close'].shift(1))
-    st_df['TR'] = st_df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
-    
-    # Calculate ATR
-    st_df['ATR'] = st_df['TR'].ewm(alpha=1/period, min_periods=period).mean()
 def calculate_adx(df, period=14):
-    """
-    Calculate Average Directional Index (ADX) and DI+/DI-.
-    """
+    """Calculate Average Directional Index (ADX) and DI+/DI- using pandas_ta."""
     adx_df = df.copy()
     
-    # True Range
-    adx_df['H-L'] = adx_df['High'] - adx_df['Low']
-    adx_df['H-PC'] = abs(adx_df['High'] - adx_df['Close'].shift(1))
-    adx_df['L-PC'] = abs(adx_df['Low'] - adx_df['Close'].shift(1))
-    adx_df['TR'] = adx_df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+    adx_result = ta.adx(adx_df['High'], adx_df['Low'], adx_df['Close'], length=period)
     
-    # Directional Movement
-    adx_df['UpMove'] = adx_df['High'] - adx_df['High'].shift(1)
-    adx_df['DownMove'] = adx_df['Low'].shift(1) - adx_df['Low']
-    
-    adx_df['+DM'] = np.where((adx_df['UpMove'] > adx_df['DownMove']) & (adx_df['UpMove'] > 0), adx_df['UpMove'], 0)
-    adx_df['-DM'] = np.where((adx_df['DownMove'] > adx_df['UpMove']) & (adx_df['DownMove'] > 0), adx_df['DownMove'], 0)
-    
-    # Wilder's Smoothing (Alpha = 1/n)
-    # The first value is usually an SMA, subsequent are EMA-like: prev + 1/n * (curr - prev) 
-    # Pandas ewm(alpha=1/period, adjust=False) is equivalent to Wilder's if initialized correctly.
-    # Standard technical analysis libraries often use adjust=False.
-    
-    alpha = 1 / period
-    
-    # Calculate Smoothed components
-    # We need a sufficient starting window to avoid convergence issues, but ewm handles it reasonably.
-    adx_df['TR_Smooth'] = adx_df['TR'].ewm(alpha=alpha, adjust=False).mean()
-    adx_df['+DM_Smooth'] = adx_df['+DM'].ewm(alpha=alpha, adjust=False).mean()
-    adx_df['-DM_Smooth'] = adx_df['-DM'].ewm(alpha=alpha, adjust=False).mean()
-    
-    # Directional Indicators
-    adx_df['+DI'] = 100 * (adx_df['+DM_Smooth'] / adx_df['TR_Smooth'])
-    adx_df['-DI'] = 100 * (adx_df['-DM_Smooth'] / adx_df['TR_Smooth'])
-    
-    # DX
-    adx_df['DX'] = 100 * abs(adx_df['+DI'] - adx_df['-DI']) / (adx_df['+DI'] + adx_df['-DI'])
-    
-    # ADX (Smoothed DX)
-    adx_df['ADX'] = adx_df['DX'].ewm(alpha=alpha, adjust=False).mean()
+    if adx_result is not None and not adx_result.empty:
+        # Column names vary by pandas_ta version, so match by prefix
+        adx_col = [c for c in adx_result.columns if c.startswith('ADX_')][0]
+        dmp_col = [c for c in adx_result.columns if c.startswith('DMP_')][0]
+        dmn_col = [c for c in adx_result.columns if c.startswith('DMN_')][0]
+        adx_df['ADX'] = adx_result[adx_col].values
+        adx_df['+DI'] = adx_result[dmp_col].values
+        adx_df['-DI'] = adx_result[dmn_col].values
+    else:
+        # Fallback to manual calculation
+        adx_df['H-L'] = adx_df['High'] - adx_df['Low']
+        adx_df['H-PC'] = abs(adx_df['High'] - adx_df['Close'].shift(1))
+        adx_df['L-PC'] = abs(adx_df['Low'] - adx_df['Close'].shift(1))
+        adx_df['TR'] = adx_df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+        
+        adx_df['UpMove'] = adx_df['High'] - adx_df['High'].shift(1)
+        adx_df['DownMove'] = adx_df['Low'].shift(1) - adx_df['Low']
+        
+        adx_df['+DM'] = np.where((adx_df['UpMove'] > adx_df['DownMove']) & (adx_df['UpMove'] > 0), adx_df['UpMove'], 0)
+        adx_df['-DM'] = np.where((adx_df['DownMove'] > adx_df['UpMove']) & (adx_df['DownMove'] > 0), adx_df['DownMove'], 0)
+        
+        alpha = 1 / period
+        adx_df['TR_Smooth'] = adx_df['TR'].ewm(alpha=alpha, adjust=False).mean()
+        adx_df['+DM_Smooth'] = adx_df['+DM'].ewm(alpha=alpha, adjust=False).mean()
+        adx_df['-DM_Smooth'] = adx_df['-DM'].ewm(alpha=alpha, adjust=False).mean()
+        
+        adx_df['+DI'] = 100 * (adx_df['+DM_Smooth'] / adx_df['TR_Smooth'])
+        adx_df['-DI'] = 100 * (adx_df['-DM_Smooth'] / adx_df['TR_Smooth'])
+        
+        adx_df['DX'] = 100 * abs(adx_df['+DI'] - adx_df['-DI']) / (adx_df['+DI'] + adx_df['-DI'])
+        adx_df['ADX'] = adx_df['DX'].ewm(alpha=alpha, adjust=False).mean()
     
     return adx_df[['Date', 'ADX', '+DI', '-DI']]

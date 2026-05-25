@@ -561,6 +561,8 @@ def main():
     "Slope Crossover",
     "Relative Strength",
     "Strong ADX",
+    "Heikin Ashi Turn",
+    "10 EMA Strategy",
     "My Watchlist"
     ]
     
@@ -582,7 +584,7 @@ def main():
     t3_band_pct, t3_days, t3_angle = 0.05, 10, 5
     t4_angle = 5
     t5_top_n, t5_angle = 10, 5
-    crossover_angle, proximity_pct = 5, 2.0
+    crossover_angle, proximity_pct, crossover_lookback, crossover_mode = 5, 2.0, 1, "Price × 200DMA"
     vol_shock_threshold, min_volume, t8_angle = 2.0, 10000, 5
     t9_min_angle, t9_max_angle, t9_prev_max = -2.0, 10.0, 0.0
 
@@ -636,7 +638,19 @@ def main():
         
     elif selected_tab == "Actual Crossover" or selected_tab == "Potential Crossover":
         st.sidebar.subheader("Crossover Settings")
-        crossover_angle = st.sidebar.number_input("200 DMA Slope >", value=5, key="crossover_angle")
+        if selected_tab == "Actual Crossover":
+            crossover_mode = st.sidebar.selectbox("Crossover Type", ["Price × 200DMA", "Price × 100DMA", "Price × 20DMA"], index=0, key="crossover_mode")
+            # Dynamic slope label based on mode
+            if crossover_mode == "Price × 20DMA":
+                slope_label = "20 DMA Slope >"
+            elif crossover_mode == "Price × 100DMA":
+                slope_label = "100 DMA Slope >"
+            else:
+                slope_label = "200 DMA Slope >"
+            crossover_angle = st.sidebar.number_input(slope_label, value=5, key="crossover_angle")
+            crossover_lookback = st.sidebar.slider("Lookback Days", 1, 20, 1, key="crossover_lookback")
+        else:
+            crossover_angle = st.sidebar.number_input("200 DMA Slope >", value=5, key="crossover_angle")
         if selected_tab == "Potential Crossover":
             proximity_pct = st.sidebar.slider("Potential Proximity %", 0.1, 5.0, 2.0, 0.1, key="proximity_pct")
             
@@ -679,6 +693,16 @@ def main():
         adx_crossover = st.sidebar.checkbox("Fresh Bullish Crossover Only", value=False, key="adx_crossover")
         # Disable buy side only if crossover is selected (implied)
         adx_buy_side = st.sidebar.checkbox("Buy Side Only (Green > Red)", value=True, key="adx_buy_side", disabled=adx_crossover)
+
+    elif selected_tab == "Heikin Ashi Turn":
+        st.sidebar.subheader("Heikin Ashi Turn Settings")
+        ha_min_angle = st.sidebar.number_input("200 DMA Slope >", value=0, key="ha_min_angle")
+        ha_show_potential = st.sidebar.checkbox("Show Potential Candidates (Shrinking Red)", value=False, key="ha_potential")
+
+    elif selected_tab == "10 EMA Strategy":
+        st.sidebar.subheader("10 EMA Strategy Settings")
+        ema_lookback = st.sidebar.slider("Trend Lookback Days", 10, 50, 20, key="ema_lookback")
+        ema_min_angle = st.sidebar.number_input("200 DMA Slope >", value=0, key="ema_min_angle")
 
     # --- Sidebar Footer ---
     st.sidebar.markdown("---")
@@ -829,7 +853,7 @@ def main():
             enable_enterprise_modules=False,
             height=400, 
             width='100%',
-            reload_data=False,
+            reload_data=True,
             key=f"grid_{key_prefix}"
         )
 
@@ -909,18 +933,37 @@ def main():
         tickers, doc_key = al.get_high_dma_angle_tickers(latest_df, selected_dma, t5_top_n, t5_angle)
         display_name = f"{selected_dma}DMA Slope"
         df_5 = get_display_data(tickers, include_vol_metrics=True).sort_values(by=display_name, ascending=False)
-        render_tab_content(df_5, f"Top {t5_top_n} Stocks by Highest {display_name} (200DMA Slope > {t5_angle}°)", "tab5", docs.get(doc_key))
+        render_tab_content(df_5, f"Top {t5_top_n} Stocks by Highest {display_name} (200DMA Slope > {t5_angle}°)", f"tab5_{selected_dma}", docs.get(doc_key))
 
     elif selected_tab == "Slope Difference":
         tickers, doc_key = al.get_slope_difference_tickers(latest_df, t6_min_diff, t6_min_200_slope, t6_top_n)
         df_diff = get_display_data(tickers)
-        df_diff['Slope Diff'] = df_diff['20DMA Slope'] - df_diff['200DMA Slope']
+        # Map raw SlopeDiff from latest_df (computed with full precision before rounding)
+        slope_diff_map = latest_df.set_index('Ticker')['SlopeDiff']
+        df_diff['Slope Diff'] = df_diff['Ticker'].map(slope_diff_map).round(2)
         render_tab_content(df_diff, f"Top {t6_top_n} Stocks by (20DMA Slope - 200DMA Slope) >= {t6_min_diff}", "tab_slope_diff", docs.get(doc_key))
 
     elif selected_tab == "Actual Crossover":
-        tickers, doc_key = al.get_actual_crossover_tickers(latest_df, crossover_angle)
+        if crossover_mode == "Price × 20DMA":
+            tickers, crossover_info, doc_key = al.get_price_dma_crossover_tickers(latest_df, df, crossover_angle, crossover_lookback, dma_period=20)
+        elif crossover_mode == "Price × 100DMA":
+            tickers, crossover_info, doc_key = al.get_price_dma_crossover_tickers(latest_df, df, crossover_angle, crossover_lookback, dma_period=100)
+        else:
+            tickers, crossover_info, doc_key = al.get_price_dma_crossover_tickers(latest_df, df, crossover_angle, crossover_lookback, dma_period=200)
         df_6 = get_display_data(tickers)
-        render_tab_content(df_6, f"Actual Bullish Crossover (20DMA crosses 200DMA) + Slope > {crossover_angle}°", "tab6", docs.get(doc_key))
+        
+        # Add Price to 200 DMA % column
+        if not df_6.empty:
+            df_6['Price/200DMA %'] = ((df_6['Price'] - df_6['200 DMA (Price)']) / df_6['200 DMA (Price)'] * 100).round(2)
+            # Add Crossover Date if lookback > 1
+            if crossover_lookback > 1 and crossover_info:
+                df_6['Crossover Date'] = df_6['Ticker'].map(crossover_info)
+                df_6['Crossover Date'] = pd.to_datetime(df_6['Crossover Date']).dt.strftime('%Y-%m-%d')
+        
+        desc_6 = f"{crossover_mode} Crossover + Slope > {crossover_angle}°"
+        if crossover_lookback > 1:
+            desc_6 += f" | Lookback: {crossover_lookback} days"
+        render_tab_content(df_6, desc_6, "tab6", docs.get(doc_key))
 
     elif selected_tab == "Potential Crossover":
         tickers, doc_key = al.get_potential_crossover_tickers(latest_df, proximity_pct, crossover_angle)
@@ -947,7 +990,7 @@ def main():
         if doc_10:
              doc_10 = doc_10.format(selected_dma_bot=selected_dma_bot)
 
-        render_tab_content(df_9, f"{selected_dma_bot}DMA Bottoming: Prev Angle <= {t9_prev_max}° → Current [{t9_min_angle}°, {t9_max_angle}°] (Turning Up)", "tab9", doc_10)
+        render_tab_content(df_9, f"{selected_dma_bot}DMA Bottoming: Prev Angle <= {t9_prev_max}° → Current [{t9_min_angle}°, {t9_max_angle}°] (Turning Up)", f"tab9_{selected_dma_bot}", doc_10)
 
     elif selected_tab == "MACD Crossover":
         tickers, doc_key = al.get_macd_crossover_tickers(latest_df, df, crossover_angle, macd_lookback)
@@ -963,6 +1006,11 @@ def main():
         tickers, doc_key = al.get_rs_strong_tickers(latest_df, df, benchmark_df, rs_slope_min, rs_200dma_angle)
         df_11 = get_display_data(tickers)
         render_tab_content(df_11, f"Relative Strength > Benchmark (Slope > {rs_slope_min}°, 200DMA Angle > {rs_200dma_angle}°)", "tab11", docs.get(doc_key))
+
+    elif selected_tab == "10 EMA Strategy":
+        tickers, doc_key = al.get_10_ema_strategy_tickers(latest_df, df, ema_lookback, ema_min_angle)
+        df_10ema = get_display_data(tickers).sort_values(by='200DMA Slope', ascending=False)
+        render_tab_content(df_10ema, f"10 EMA Institutional Trend Strategy (Lookback: {ema_lookback} days)", "tab_10ema", docs.get(doc_key))
 
     elif selected_tab == "My Watchlist":
         watchlist_tickers = load_watchlist()
@@ -991,6 +1039,18 @@ def main():
             desc += " - Bullish Only (+DI > -DI)"
             
         render_tab_content(df_12, desc, "tab12", docs.get(doc_key))
+
+    elif selected_tab == "Heikin Ashi Turn":
+        if ha_show_potential:
+            tickers, doc_key = al.get_heikin_ashi_potential_turn_tickers(latest_df, df, ha_min_angle)
+            desc_ha = f"Potential HA Turn: Red candles shrinking (weakening bears) | 200 DMA Slope > {ha_min_angle}°"
+        else:
+            tickers, doc_key = al.get_heikin_ashi_turnover_tickers(latest_df, df, ha_min_angle)
+            desc_ha = f"Heikin Ashi turned Red → Green | 200 DMA Slope > {ha_min_angle}°"
+        df_ha = get_display_data(tickers)
+        if not df_ha.empty and '200DMA Slope' in df_ha.columns:
+            df_ha = df_ha.sort_values(by='200DMA Slope', ascending=False)
+        render_tab_content(df_ha, desc_ha + " | Sorted by 200DMA Slope", "tab_ha")
 
     elif selected_tab == "Search":
         tickers, doc_key = al.search_tickers(latest_df, search_query)
