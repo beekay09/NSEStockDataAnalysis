@@ -573,11 +573,7 @@ def main():
 
     st.sidebar.header("Filter Settings")
     
-    # Check for Search Tab
-    if selected_tab == "Search":
-        st.sidebar.subheader("Search Settings")
-        search_query = st.sidebar.text_input("Search Ticker (min 2 chars)", value="")
-    
+
     # Initialize variables with defaults (to avoid NameError)
     t1_rsi, t1_angle = 30, 5
     t2_beta_pct, t2_angle = 0.25, 5
@@ -1053,6 +1049,7 @@ def main():
         render_tab_content(df_ha, desc_ha + " | Sorted by 200DMA Slope", "tab_ha")
 
     elif selected_tab == "Search":
+        search_query = st.text_input("Search Ticker (min 2 chars)", value="")
         tickers, doc_key = al.search_tickers(latest_df, search_query)
         if tickers:
             df_search = get_display_data(tickers)
@@ -1060,7 +1057,7 @@ def main():
         elif search_query and len(search_query) >= 2:
              st.warning(f"No stocks found matching '{search_query}'")
         else:
-             st.info("Please enter at least 2 characters in the sidebar to search.")
+             st.info("Please enter at least 2 characters to search.")
 
 if __name__ == "__main__":
     main()
