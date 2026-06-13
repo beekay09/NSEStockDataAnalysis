@@ -14,9 +14,14 @@ from add_metrics import calculate_angle
 DATA_FILE = r'c:\userdata\repo\NSEStockDataAnalysis\nse_stock_data_with_metrics_v2.csv'
 RAW_FILE  = r'c:\userdata\repo\NSEStockDataAnalysis\nse_stock_data_backfill.csv'
 
-# Step 1: Get max date from DB
-db_max_date = db_utils.get_max_date()
-print(f"DB max date: {db_max_date}")
+# Step 1: Get max date from DB (fail fast if DB unreachable)
+try:
+    db_max_date = db_utils.get_max_date()
+    print(f"DB max date: {db_max_date}")
+except Exception as e:
+    print(f"\n[ERROR] Cannot connect to CockroachDB: {e}")
+    print("Fix your DATABASE_URL (check password encoding) and re-run.")
+    sys.exit(1)
 
 # Step 2: Get max date from local CSV
 csv_df = pd.read_csv(DATA_FILE, usecols=['Date'], parse_dates=['Date'])
@@ -80,7 +85,11 @@ for col in [f'{w}DMA' for w in [3, 20, 100, 200]] + ['RSI_14']:
     merged_df[f'{col}_SLOPE'] = merged_df.groupby('Ticker')[col].transform(lambda x: calculate_angle(x, 3))
 
 # Step 6: Extract only the delta rows (after DB max date) and upsert
-delta_df = merged_df[merged_df['Date'] > db_max_date] if db_max_date else merged_df
+if db_max_date is not None:
+    delta_df = merged_df[merged_df['Date'] > db_max_date]
+else:
+    # DB table is genuinely empty — seed everything
+    delta_df = merged_df
 print(f"Upserting {len(delta_df)} delta rows to CockroachDB...")
 count = db_utils.upsert_metrics(delta_df)
 print(f"Done! Upserted {count} rows.")

@@ -90,18 +90,18 @@ def read_all_from_db():
 
 
 def get_max_date():
-    """Returns the maximum Date in the stock_metrics table, or None if empty."""
+    """Returns the maximum Date in the stock_metrics table, or None if empty.
+    
+    Raises an exception on connection/query errors so callers can distinguish
+    between an empty table (None) and a DB failure (exception).
+    """
     engine = get_engine()
-    try:
-        with engine.connect() as conn:
-            result = conn.execute(text(f'SELECT MAX("Date") FROM {TABLE_NAME}'))
-            row = result.fetchone()
-            if row and row[0]:
-                return pd.Timestamp(row[0])
-        return None
-    except Exception as e:
-        print(f"Error getting max date from DB: {e}")
-        return None
+    with engine.connect() as conn:
+        result = conn.execute(text(f'SELECT MAX("Date") FROM {TABLE_NAME}'))
+        row = result.fetchone()
+        if row and row[0]:
+            return pd.Timestamp(row[0])
+    return None
 
 
 def upsert_metrics(df):
