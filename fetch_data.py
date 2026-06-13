@@ -3,7 +3,7 @@ import pandas as pd
 import datetime
 import os
 
-def fetch_stock_data(output_file="nse_stock_data.csv"):
+def fetch_stock_data(output_file="nse_stock_data.csv", start_date=None):
     # Read stocks from file
     # Read stocks from file
     stocks_file = "stocks.txt"
@@ -57,9 +57,13 @@ def fetch_stock_data(output_file="nse_stock_data.csv"):
     data_frames = []
 
     try:
-        # Period '2y' is approximately 730 days.
+        # Use start_date if provided (delta fetch), otherwise default to 2 years
         end_date = datetime.datetime.now()
-        start_date = end_date - datetime.timedelta(days=730)
+        if start_date:
+            print(f"Delta fetch: {start_date} to {end_date.date()}")
+        else:
+            start_date = end_date - datetime.timedelta(days=730)
+            print(f"Full fetch: {start_date.date()} to {end_date.date()}")
         
         # Download data
         # threads=True uses threading for faster download

@@ -7,6 +7,12 @@ import datetime
 import fetch_data
 import warnings
 
+try:
+    import db_utils
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
+
 warnings.filterwarnings('ignore')
 
 REQUIRED_FILE = "nse_stock_data.csv"
@@ -128,7 +134,30 @@ def main():
     # Final Sort: Ticker Ascending, Date Descending (Latest date on top)
     df.sort_values(by=['Ticker', 'Date'], ascending=[True, False], inplace=True)
     df.to_csv(OUTPUT_FILE, index=False)
+    print("CSV saved.")
+
+    # 5. Upsert only the delta to CockroachDB
+    if DB_AVAILABLE:
+        try:
+            print("Syncing delta metrics to CockroachDB...")
+            db_max_date = db_utils.get_max_date()
+            if db_max_date is not None:
+                delta_df = df[df['Date'] > db_max_date]
+                print(f"DB has data up to {db_max_date.date()}. Upserting {len(delta_df)} new rows...")
+            else:
+                delta_df = df
+                print(f"DB is empty. Upserting all {len(delta_df)} rows...")
+            if not delta_df.empty:
+                db_utils.upsert_metrics(delta_df)
+            else:
+                print("No new rows to upsert.")
+        except Exception as e:
+            print(f"Warning: DB sync failed (non-fatal): {e}")
+    else:
+        print("db_utils not available. Skipping DB sync.")
+
     print("Done.")
 
 if __name__ == "__main__":
     main()
+

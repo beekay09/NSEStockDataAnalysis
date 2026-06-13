@@ -19,6 +19,12 @@ try:
 except:
     pass
 
+try:
+    import db_utils
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
+
 # Page configuration
 st.set_page_config(
     page_title="NSE Stock Analysis Dashboard",
@@ -38,10 +44,184 @@ def load_css(is_dark_mode=True):
             st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
 
+def _is_cache_fresh():
+    """Check if local CSV has data up to the latest available trading day.
+    
+    Reads the actual max Date from inside the CSV rather than relying on
+    the file modification timestamp, which can be misleading.
+    """
+    if not os.path.exists(DATA_FILE):
+        return False
+
+    try:
+        # Only read the Date column to keep this fast
+        dates = pd.read_csv(DATA_FILE, usecols=['Date'], parse_dates=['Date'])
+        if dates.empty:
+            return False
+        max_date = dates['Date'].max().date()
+    except Exception:
+        return False
+
+    now = datetime.datetime.now()
+    today = now.date()
+    yesterday = today - datetime.timedelta(days=1)
+
+    # After market close (3:31 PM IST): expect today's data
+    if (now.hour > 15) or (now.hour == 15 and now.minute >= 31):
+        return max_date >= today
+
+    # Before market close: yesterday's data is acceptable
+    return max_date >= yesterday
 
 
 def check_and_update_data():
-    """Checks if data is fresh, otherwise runs the update script."""
+    """
+    DB-backed daily cache strategy:
+    1. If local CSV is fresh (updated today post-market) → use it (0 DB reads)
+    2. Otherwise → pull history from DB, fetch delta from yfinance,
+       recompute metrics, upsert to DB, save CSV cache
+    3. Falls back to original subprocess approach if DATABASE_URL is not set
+    """
+    if _is_cache_fresh():
+        return  # Local cache is fresh, nothing to do
+    
+    # If DB is not available, fall back to original behavior
+    if not DB_AVAILABLE or not os.environ.get("DATABASE_URL"):
+        _fallback_update()
+        return
+    
+    with st.spinner("Refreshing data from CockroachDB + yfinance delta..."):
+        try:
+            import pandas_ta as ta
+            import fetch_data
+            from add_metrics import calculate_angle
+
+            # 1. Pull base data from local CSV if it exists, else from DB
+            db_utils.ensure_table()
+            db_max_date = None  # track DB's own max date for the upsert delta
+
+            if os.path.exists(DATA_FILE):
+                st.info("Loading base data from local CSV cache...")
+                db_df = pd.read_csv(DATA_FILE)
+                db_df['Date'] = pd.to_datetime(db_df['Date'])
+                # Also get DB max date separately so we know what to upsert
+                try:
+                    db_max_date = db_utils.get_max_date()
+                except Exception:
+                    db_max_date = None
+            else:
+                st.info("Local cache missing. Pulling full history from CockroachDB...")
+                db_df = db_utils.read_all_from_db()
+                db_max_date = db_df['Date'].max() if not db_df.empty else None
+
+            # 2. Determine delta range based on what's in our base data
+            if not db_df.empty:
+                max_date = db_df['Date'].max()
+                delta_start = max_date + pd.Timedelta(days=1)
+                st.info(f"Base data up to {max_date.date()}. Fetching delta from {delta_start.date()}...")
+            else:
+                # Both local cache and DB are empty — do a full 2-year fetch
+                delta_start = None
+                st.info("No base data found. Doing full 2-year fetch from yfinance...")
+            
+            # 3. Fetch delta from yfinance
+            raw_file = "nse_stock_data.csv"
+            fetch_data.fetch_stock_data(raw_file, start_date=delta_start)
+            
+            # 4. Load and merge
+            if os.path.exists(raw_file):
+                new_df = pd.read_csv(raw_file)
+                new_df['Date'] = pd.to_datetime(new_df['Date'])
+                
+                if not db_df.empty and not new_df.empty:
+                    # Merge: DB history + new delta
+                    # Remove any overlapping dates from DB data before concat
+                    db_df = db_df[~db_df['Date'].isin(new_df['Date'].unique())]
+                    # Only keep raw OHLCV columns from both sources for metric recalculation
+                    raw_cols = ['Date', 'Ticker', 'Open', 'High', 'Low', 'Close', 'Volume']
+                    db_raw = db_df[[c for c in raw_cols if c in db_df.columns]]
+                    new_raw = new_df[[c for c in raw_cols if c in new_df.columns]]
+                    merged_df = pd.concat([db_raw, new_raw], ignore_index=True)
+                elif not new_df.empty:
+                    merged_df = new_df.copy()
+                else:
+                    merged_df = db_df.copy()
+            else:
+                merged_df = db_df.copy()
+            
+            if merged_df.empty:
+                st.error("No data available from DB or yfinance.")
+                return
+            
+            # 5. Recompute all metrics on merged data
+            merged_df['Date'] = pd.to_datetime(merged_df['Date'])
+            merged_df.sort_values(by=['Ticker', 'Date'], inplace=True)
+            
+            # RSI
+            merged_df['RSI_14'] = merged_df.groupby('Ticker')['Close'].transform(
+                lambda x: ta.rsi(x, length=14))
+            
+            # DMAs
+            for window in [3, 20, 100, 200]:
+                merged_df[f'{window}DMA'] = merged_df.groupby('Ticker')['Close'].transform(
+                    lambda x: ta.sma(x, length=window))
+            
+            # VWMAs
+            for window in [3, 20, 100, 200]:
+                name = f'{window}VWMA'
+                def compute_group_vwma(g, w=window):
+                    result = ta.vwma(g['Close'], g['Volume'], length=w)
+                    if result is not None:
+                        return result
+                    vwma = (g['Close'] * g['Volume']).rolling(w, min_periods=1).sum() / \
+                           g['Volume'].rolling(w, min_periods=1).sum()
+                    return vwma
+                merged_df[name] = merged_df.groupby('Ticker', group_keys=False).apply(compute_group_vwma)
+            
+            # Heikin Ashi
+            merged_df['HA_Close'] = (merged_df['Open'] + merged_df['High'] + 
+                                     merged_df['Low'] + merged_df['Close']) / 4
+            initial_ha_open = (merged_df['Open'] + merged_df['Close']) / 2
+            x = merged_df.groupby('Ticker')['HA_Close'].shift(1).fillna(initial_ha_open)
+            merged_df['HA_Open'] = x.groupby(merged_df['Ticker']).transform(
+                lambda s: s.ewm(alpha=0.5, adjust=False).mean())
+            
+            # Slopes
+            for col in [f'{w}DMA' for w in [3, 20, 100, 200]] + ['RSI_14']:
+                merged_df[f'{col}_SLOPE'] = merged_df.groupby('Ticker')[col].transform(
+                    lambda x: calculate_angle(x, 3))
+            
+            # 6. Sort and save to local CSV cache
+            merged_df.sort_values(by=['Ticker', 'Date'], ascending=[True, False], inplace=True)
+            merged_df.to_csv(DATA_FILE, index=False)
+            
+            # 7. Upsert only delta to DB (rows newer than what DB already has)
+            try:
+                if db_max_date is not None:
+                    # Only upsert rows strictly newer than the DB's own max date
+                    delta_to_upsert = merged_df[merged_df['Date'] > db_max_date]
+                    if not delta_to_upsert.empty:
+                        st.info(f"Syncing {len(delta_to_upsert)} new rows to CockroachDB...")
+                        db_utils.upsert_metrics(delta_to_upsert)
+                    else:
+                        st.info("CockroachDB already up to date.")
+                else:
+                    # DB was empty or unknown, upsert everything
+                    st.info(f"Syncing all {len(merged_df)} rows to CockroachDB...")
+                    db_utils.upsert_metrics(merged_df)
+            except Exception as e:
+                st.warning(f"DB sync warning (non-fatal): {e}")
+            
+            st.success("Data refreshed successfully!")
+            load_data.clear()
+            
+        except Exception as e:
+            st.error(f"DB-backed update failed: {e}. Falling back to original method...")
+            _fallback_update()
+
+
+def _fallback_update():
+    """Original update logic — runs add_metrics.py as a subprocess."""
     should_update = False
     msg = ""
 
@@ -52,17 +232,11 @@ def check_and_update_data():
         mod_time = os.path.getmtime(DATA_FILE)
         age_hours = (time.time() - mod_time) / 3600
         
-        # Smart Refresh Logic
         current_dt = datetime.datetime.now()
         file_mod_dt = datetime.datetime.fromtimestamp(mod_time)
         
-        # Check if it is "Post Market" (After 3:31 PM)
         is_post_market = (current_dt.hour > 15) or (current_dt.hour == 15 and current_dt.minute >= 31)
-        
-        # Check if file was updated BEFORE 3:31 PM today
-        # Construct "Today 3:31 PM"
         today_cutoff = current_dt.replace(hour=15, minute=31, second=0, microsecond=0)
-        
         should_smart_update = is_post_market and (file_mod_dt < today_cutoff)
 
         if should_smart_update:
@@ -75,15 +249,14 @@ def check_and_update_data():
     if should_update:
         with st.spinner(msg):
             try:
-                # Run add_metrics.py using the same python environment
                 subprocess.run([sys.executable, "add_metrics.py"], check=True)
                 st.success("Data updated successfully!")
-                # Clear cache to force reload of new data
                 load_data.clear()
             except subprocess.CalledProcessError as e:
                 st.error(f"Failed to update data: {e}")
             except Exception as e:
                 st.error(f"An error occurred during update: {e}")
+
 
 @st.cache_data
 def load_data():
